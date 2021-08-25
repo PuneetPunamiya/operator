@@ -19,6 +19,7 @@ package main
 import (
 	"github.com/tektoncd/operator/pkg/reconciler/openshift/tektonaddon"
 	"github.com/tektoncd/operator/pkg/reconciler/openshift/tektonconfig"
+	"github.com/tektoncd/operator/pkg/reconciler/openshift/tektonhub"
 	"github.com/tektoncd/operator/pkg/reconciler/openshift/tektonpipeline"
 	"github.com/tektoncd/operator/pkg/reconciler/openshift/tektontrigger"
 	"knative.dev/pkg/injection/sharedmain"
@@ -30,5 +31,6 @@ func main() {
 		tektontrigger.NewController,
 		tektonaddon.NewController,
 		tektonconfig.NewController,
+		tektonhub.NewController,
 	)
 }

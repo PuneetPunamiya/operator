@@ -24,6 +24,8 @@ type TektonConfigExpansion interface{}
 
 type TektonDashboardExpansion interface{}
 
+type TektonHubExpansion interface{}
+
 type TektonPipelineExpansion interface{}
 
 type TektonResultExpansion interface{}

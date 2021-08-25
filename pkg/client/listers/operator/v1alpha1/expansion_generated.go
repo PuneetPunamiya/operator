@@ -30,6 +30,10 @@ type TektonConfigListerExpansion interface{}
 // TektonDashboardLister.
 type TektonDashboardListerExpansion interface{}
 
+// TektonHubListerExpansion allows custom methods to be added to
+// TektonHubLister.
+type TektonHubListerExpansion interface{}
+
 // TektonPipelineListerExpansion allows custom methods to be added to
 // TektonPipelineLister.
 type TektonPipelineListerExpansion interface{}

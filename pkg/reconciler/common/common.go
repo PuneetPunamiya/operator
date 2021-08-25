@@ -35,6 +35,7 @@ var (
 	AddonResourceName     = "addon"
 	ConfigResourceName    = "config"
 	ResultResourceName    = "result"
+	HubResourceName       = "hub"
 	ProfileLite           = "lite"
 	ProfileBasic          = "basic"
 	ProfileAll            = "all"

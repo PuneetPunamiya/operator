@@ -84,3 +84,10 @@ func TearDownResult(clients *Clients, name string) {
 		_ = clients.TektonResult().Delete(context.TODO(), name, metav1.DeleteOptions{})
 	}
 }
+
+// TearDownHub will delete created TektonHub CRs using clients.
+func TearDownHub(clients *Clients, name string) {
+	if clients != nil && clients.Operator != nil {
+		// _ = clients.TektonHub().Delete(context.TODO(), name, metav1.DeleteOptions{})
+	}
+}

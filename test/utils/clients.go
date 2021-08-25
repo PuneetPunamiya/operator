@@ -140,3 +140,11 @@ func (c *Clients) TektonResult() operatorv1alpha1.TektonResultInterface {
 func (c *Clients) TektonResultAll() operatorv1alpha1.TektonResultInterface {
 	return c.Operator.TektonResults()
 }
+
+// func (c *Clients) TektonHub() operatorv1alpha1.TektonHubInterface {
+// 	return c.Operator.TektonHub()
+// }
+
+// func (c *Clients) TektonHubAll() operatorv1alpha1.TektonHubInterface {
+// 	return c.Operator.TektonHub()
+// }

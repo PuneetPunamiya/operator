@@ -33,6 +33,7 @@ var (
 	clusterTriggerBinding mf.Predicate = mf.Any(mf.ByKind("ClusterTriggerBinding"))
 	persistentVolumeClaim mf.Predicate = mf.Any(mf.ByKind("PersistentVolumeClaim"))
 	deployment            mf.Predicate = mf.Any(mf.ByKind("Deployment"))
+	job                   mf.Predicate = mf.Any(mf.ByKind("Job"))
 )
 
 // Install applies the manifest resources for the given version and updates the given
@@ -47,6 +48,10 @@ func Install(ctx context.Context, manifest *mf.Manifest, instance v1alpha1.Tekto
 	if err := manifest.Filter(namespace).Apply(); err != nil {
 		status.MarkInstallFailed(err.Error())
 		return fmt.Errorf("failed to apply namespaces: %w", err)
+	}
+	if err := manifest.Filter(job).Apply(); err != nil {
+		status.MarkInstallFailed(err.Error())
+		return fmt.Errorf("failed to apply job: %w", err)
 	}
 	if err := manifest.Filter(role).Apply(); err != nil {
 		status.MarkInstallFailed(err.Error())

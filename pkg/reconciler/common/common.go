@@ -38,6 +38,7 @@ var (
 	ProfileLite           = "lite"
 	ProfileBasic          = "basic"
 	ProfileAll            = "all"
+	HubResourceName       = "hub"
 	Interval              = 10 * time.Second
 	Timeout               = 1 * time.Minute
 )

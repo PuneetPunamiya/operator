@@ -114,6 +114,7 @@ func (r *Reconciler) ReconcileKind(ctx context.Context, th *v1alpha1.TektonHub) 
 
 	transformedManifest, err := manifest.Transform(
 		injectOwner([]metav1.OwnerReference{ownerRef}),
+		changeNamespaceName(th.Spec.TargetNamespace),
 	)
 	if err != nil {
 		logger.Error("failed to transform manifest")
@@ -139,12 +140,21 @@ func (r *Reconciler) ReconcileKind(ctx context.Context, th *v1alpha1.TektonHub) 
 		return err
 	}
 
-	// create the DB
-	if err := common.Install(ctx, &manifest, th); err != nil {
+	transformedManifest, err = manifest.Transform(
+		injectOwner([]metav1.OwnerReference{ownerRef}),
+		changeNamespace(th.Spec.TargetNamespace),
+	)
+	if err != nil {
+		logger.Error("failed to transform manifest")
 		return err
 	}
 
-	if err := common.CheckDeployments(ctx, &manifest, th); err != nil {
+	// create the DB
+	if err := common.Install(ctx, &transformedManifest, th); err != nil {
+		return err
+	}
+
+	if err := common.CheckDeployments(ctx, &transformedManifest, th); err != nil {
 		return err
 	}
 
@@ -157,11 +167,20 @@ func (r *Reconciler) ReconcileKind(ctx context.Context, th *v1alpha1.TektonHub) 
 		return err
 	}
 
-	if err := common.Install(ctx, &manifest, th); err != nil {
+	transformedManifest, err = manifest.Transform(
+		injectOwner([]metav1.OwnerReference{ownerRef}),
+		changeNamespace(th.Spec.TargetNamespace),
+	)
+	if err != nil {
+		logger.Error("failed to transform manifest")
 		return err
 	}
 
-	if err := common.CheckJobs(ctx, &manifest, th); err != nil {
+	if err := common.Install(ctx, &transformedManifest, th); err != nil {
+		return err
+	}
+
+	if err := common.CheckJobs(ctx, &transformedManifest, th); err != nil {
 		return err
 	}
 

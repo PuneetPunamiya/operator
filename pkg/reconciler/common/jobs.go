@@ -44,7 +44,7 @@ func CheckJobs(ctx context.Context, manifest *mf.Manifest, instance v1alpha1.Tek
 		}
 		if !isJobCompleted(job) {
 			status.MarkDeploymentsNotReady()
-			return errors.New("deployment not available")
+			return errors.New("job unsuccessful")
 		}
 	}
 	status.MarkDeploymentsAvailable()

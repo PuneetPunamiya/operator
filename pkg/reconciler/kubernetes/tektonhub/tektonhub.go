@@ -52,6 +52,11 @@ type Reconciler struct {
 var _ tektonhubconciler.Interface = (*Reconciler)(nil)
 var _ tektonhubconciler.Finalizer = (*Reconciler)(nil)
 
+var (
+	lookupNs   string = "tekton-operators"
+	keyMissing error  = fmt.Errorf("secret doesn't contains all the keys")
+)
+
 // FinalizeKind removes all resources after deletion of a TektonHub.
 func (r *Reconciler) FinalizeKind(ctx context.Context, original *v1alpha1.TektonHub) pkgreconciler.Event {
 	logger := logging.FromContext(ctx)
@@ -112,7 +117,7 @@ func (r *Reconciler) ReconcileKind(ctx context.Context, th *v1alpha1.TektonHub) 
 
 	ownerRef := *metav1.NewControllerRef(th, th.GroupVersionKind())
 
-	transformedManifest, err := manifest.Transform(
+	manifest, err := manifest.Transform(
 		injectOwner([]metav1.OwnerReference{ownerRef}),
 		changeNamespaceName(th.Spec.TargetNamespace),
 	)
@@ -122,12 +127,12 @@ func (r *Reconciler) ReconcileKind(ctx context.Context, th *v1alpha1.TektonHub) 
 	}
 
 	// apply the namespace
-	if err := transformedManifest.Apply(); err != nil {
+	if err := manifest.Apply(); err != nil {
 		return err
 	}
 
 	// check if the secrets are created
-	if err := r.validateSecretsAreCreated(ctx, th); err != nil {
+	if err := r.validateDBSecretsAreCreated(ctx, th); err != nil {
 		return err
 	}
 	th.Status.MarkDependenciesInstalled()
@@ -140,7 +145,7 @@ func (r *Reconciler) ReconcileKind(ctx context.Context, th *v1alpha1.TektonHub) 
 		return err
 	}
 
-	transformedManifest, err = manifest.Transform(
+	manifest, err = manifest.Transform(
 		injectOwner([]metav1.OwnerReference{ownerRef}),
 		changeNamespace(th.Spec.TargetNamespace),
 	)
@@ -150,11 +155,11 @@ func (r *Reconciler) ReconcileKind(ctx context.Context, th *v1alpha1.TektonHub) 
 	}
 
 	// create the DB
-	if err := common.Install(ctx, &transformedManifest, th); err != nil {
+	if err := common.Install(ctx, &manifest, th); err != nil {
 		return err
 	}
 
-	if err := common.CheckDeployments(ctx, &transformedManifest, th); err != nil {
+	if err := common.CheckDeployments(ctx, &manifest, th); err != nil {
 		return err
 	}
 
@@ -167,7 +172,7 @@ func (r *Reconciler) ReconcileKind(ctx context.Context, th *v1alpha1.TektonHub) 
 		return err
 	}
 
-	transformedManifest, err = manifest.Transform(
+	manifest, err = manifest.Transform(
 		injectOwner([]metav1.OwnerReference{ownerRef}),
 		changeNamespace(th.Spec.TargetNamespace),
 	)
@@ -176,11 +181,74 @@ func (r *Reconciler) ReconcileKind(ctx context.Context, th *v1alpha1.TektonHub) 
 		return err
 	}
 
-	if err := common.Install(ctx, &transformedManifest, th); err != nil {
+	if err := common.Install(ctx, &manifest, th); err != nil {
 		return err
 	}
 
-	if err := common.CheckJobs(ctx, &transformedManifest, th); err != nil {
+	if err := common.CheckJobs(ctx, &manifest, th); err != nil {
+		return err
+	}
+
+	// create API
+	apiLocation := filepath.Join(hubDir, "api")
+
+	if err := common.AppendManifest(&manifest, apiLocation); err != nil {
+		return err
+	}
+	manifest, err = manifest.Transform(
+		injectOwner([]metav1.OwnerReference{ownerRef}),
+		changeNamespace(th.Spec.TargetNamespace),
+	)
+	if err != nil {
+		logger.Error("failed to transform manifest")
+		return err
+	}
+
+	if err := r.validateApiSecrets(ctx, th); err != nil {
+		return err
+	}
+
+	if err := common.Install(ctx, &manifest, th); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (r *Reconciler) validateApiSecrets(ctx context.Context, th *v1alpha1.TektonHub) error {
+	logger := logging.FromContext(ctx)
+
+	// secret, err := r.kubeClientSet.CoreV1().Secrets("openshift-operators").Get(ctx, th.Spec.ApiSecretName, metav1.GetOptions{})
+	// if err != nil {
+	// 	logger.Error(err)
+	// 	return err
+	// }
+	// _, err = r.kubeClientSet.CoreV1().Secrets(th.Spec.TargetNamespace).Create(ctx, secret, metav1.CreateOptions{})
+	// if err != nil {
+	// 	logger.Error(err)
+	// 	return err
+	// }
+
+	apiKeys := []string{"GH_CLIENT_ID", "GH_CLIENT_SECRET", "JWT_SIGNING_KEY", "ACCESS_JWT_EXPIRES_IN", "REFRESH_JWT_EXPIRES_IN", "GHE_URL"}
+
+	secret, err := r.getSecretForHub(ctx, th.Spec.ApiSecretName, lookupNs, apiKeys)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			th.Status.MarkDependencyMissing(fmt.Sprintf("%s secret is missing", th.Spec.ApiSecretName))
+			return err
+		}
+		if err == keyMissing {
+			th.Status.MarkDependencyMissing(fmt.Sprintf("%s secret is missing the keys", th.Spec.ApiSecretName))
+			return err
+		} else {
+			logger.Error(err)
+			return err
+		}
+	}
+
+	_, err = r.kubeClientSet.CoreV1().Secrets(th.Spec.TargetNamespace).Create(ctx, secret, metav1.CreateOptions{})
+	if err != nil {
+		logger.Error(err)
 		return err
 	}
 
@@ -188,45 +256,81 @@ func (r *Reconciler) ReconcileKind(ctx context.Context, th *v1alpha1.TektonHub) 
 }
 
 // TektonHubs expects secrets to be created before installing
-func (r *Reconciler) validateSecretsAreCreated(ctx context.Context, th *v1alpha1.TektonHub) error {
+func (r *Reconciler) validateDBSecretsAreCreated(ctx context.Context, th *v1alpha1.TektonHub) error {
 	logger := logging.FromContext(ctx)
 
-	secret, err := r.kubeClientSet.CoreV1().Secrets(th.Spec.TargetNamespace).Get(ctx, th.Spec.SecretName, metav1.GetOptions{})
+	dbKeys := []string{"POSTGRES_DB", "POSTGRES_USER", "POSTGRES_PASSWORD", "POSTGRES_PORT"}
+
+	secret, err := r.getSecretForHub(ctx, th.Spec.DbSecretName, lookupNs, dbKeys)
 	if err != nil {
+		dbSecret := createSecret(th.Spec.DbSecretName, th.Spec.TargetNamespace)
 		if apierrors.IsNotFound(err) {
-			dbSecret := createSecret(th.Spec.SecretName, th.Spec.TargetNamespace)
 			_, err = r.kubeClientSet.CoreV1().Secrets(th.Spec.TargetNamespace).Create(ctx, dbSecret, metav1.CreateOptions{})
 			if err != nil {
 				logger.Error(err)
-				th.Status.MarkDependencyMissing(fmt.Sprintf("%s secret is missing", th.Spec.SecretName))
+				th.Status.MarkDependencyMissing(fmt.Sprintf("%s secret is missing", th.Spec.DbSecretName))
 				return err
 			}
 			return nil
 		}
+		if err == keyMissing {
+			_, err = r.kubeClientSet.CoreV1().Secrets(th.Spec.TargetNamespace).Update(ctx, dbSecret, metav1.UpdateOptions{})
+			if err != nil {
+				logger.Error(err)
+				th.Status.MarkDependencyMissing(fmt.Sprintf("%s secret is missing", th.Spec.DbSecretName))
+				return err
+			}
+		} else {
+			logger.Error(err)
+			return err
+		}
+	}
+
+	_, err = r.kubeClientSet.CoreV1().Secrets(th.Spec.TargetNamespace).Create(ctx, secret, metav1.CreateOptions{})
+	if err != nil {
 		logger.Error(err)
 		return err
 	}
 
+	// for _, dbKey := range dbKeys {
+	// 	if _, ok := secret.Data[dbKey]; !ok {
+	// 		allKeys = false
+	// 		th.Status.MarkDependencyMissing(fmt.Sprintf("missing value %s from %s secret", dbKey, th.Spec.DbSecretName))
+	// 		break
+	// 	}
+	// }
+
+	// if !allKeys {
+	// 	_, err = r.kubeClientSet.CoreV1().Secrets(th.Spec.TargetNamespace).Update(ctx, createSecret(th.Spec.DbSecretName, th.Spec.TargetNamespace), metav1.UpdateOptions{})
+	// 	if err != nil {
+	// 		logger.Error(err)
+	// 		th.Status.MarkDependencyMissing(fmt.Sprintf("%s secret is missing", th.Spec.DbSecretName))
+	// 		return err
+	// 	}
+	// }
+
+	return nil
+}
+
+func (r *Reconciler) getSecretForHub(ctx context.Context, name, namespace string, keys []string) (*corev1.Secret, error) {
+	secret, err := r.kubeClientSet.CoreV1().Secrets(name).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return nil, err
+	}
+
 	allKeys := true
-	dbKeys := []string{"POSTGRES_DB", "POSTGRES_USER", "POSTGRES_PASSWORD", "POSTGRES_PORT"}
-	for _, dbKey := range dbKeys {
-		if _, ok := secret.Data[dbKey]; !ok {
+	for _, key := range keys {
+		if _, ok := secret.Data[key]; !ok {
 			allKeys = false
-			th.Status.MarkDependencyMissing(fmt.Sprintf("missing value %s from %s secret", dbKey, th.Spec.SecretName))
 			break
 		}
 	}
 
 	if !allKeys {
-		_, err = r.kubeClientSet.CoreV1().Secrets(th.Spec.TargetNamespace).Update(ctx, createSecret(th.Spec.SecretName, th.Spec.TargetNamespace), metav1.UpdateOptions{})
-		if err != nil {
-			logger.Error(err)
-			th.Status.MarkDependencyMissing(fmt.Sprintf("%s secret is missing", th.Spec.SecretName))
-			return err
-		}
+		return nil, keyMissing
 	}
 
-	return nil
+	return secret, nil
 }
 
 func createSecret(name, namespace string) *corev1.Secret {

@@ -46,15 +46,19 @@ func (tp *TektonHub) GetStatus() TektonComponentStatus {
 	return &tp.Status
 }
 
+type DbSpec struct {
+	DbSecretName string `json:"dbSecretName,omitempty"`
+}
+
 type ApiSpec struct {
 	ConfigMapName string `json:"configMapName,omitempty"`
-	SecretName    string `json:"secretName,omitempty"`
+	ApiSecretName string `json:"apiSecretName,omitempty"`
 }
 
 // TektonResultSpec defines the desired state of TektonResult
 type TektonHubSpec struct {
 	CommonSpec `json:",inline"`
-	SecretName string `json:"secretName,omitempty"`
+	DbSpec     `json:",inline"`
 	ApiSpec    `json:",inline"`
 }
 

@@ -73,7 +73,7 @@ clean-bin:
 	-rm -rf test/tests.* test/coverage.*
 
 .PHONY: clean
-clean: clean-cluster clean-bin clean-manifest; $(info $(M) clean all) @ ## Cleanup everything
+clean: clean-cluster clean-manifest; $(info $(M) clean all) @ ## Cleanup everything
 
 .PHONY: help
 help:

@@ -229,9 +229,10 @@ func (r *Reconciler) validateApiSecrets(ctx context.Context, th *v1alpha1.Tekton
 	// 	return err
 	// }
 
-	apiKeys := []string{"GH_CLIENT_ID", "GH_CLIENT_SECRET", "JWT_SIGNING_KEY", "ACCESS_JWT_EXPIRES_IN", "REFRESH_JWT_EXPIRES_IN", "GHE_URL"}
+	apiSecretKeys := []string{"GH_CLIENT_ID", "GH_CLIENT_SECRET", "JWT_SIGNING_KEY", "ACCESS_JWT_EXPIRES_IN", "REFRESH_JWT_EXPIRES_IN", "GHE_URL"}
+	apiConfigMapKeys := []string{"CONFIG_FILE_URL"}
 
-	secret, err := r.getSecretForHub(ctx, th.Spec.ApiSecretName, lookupNs, apiKeys)
+	secret, err := r.getSecretForHub(ctx, th.Spec.ApiSecretName, lookupNs, apiSecretKeys)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			th.Status.MarkDependencyMissing(fmt.Sprintf("%s secret is missing", th.Spec.ApiSecretName))
@@ -247,6 +248,27 @@ func (r *Reconciler) validateApiSecrets(ctx context.Context, th *v1alpha1.Tekton
 	}
 
 	_, err = r.kubeClientSet.CoreV1().Secrets(th.Spec.TargetNamespace).Create(ctx, secret, metav1.CreateOptions{})
+	if err != nil {
+		logger.Error(err)
+		return err
+	}
+
+	configMap, err := r.getConfigMapForHub(ctx, th.Spec.ConfigMapName, lookupNs, apiConfigMapKeys)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			th.Status.MarkDependencyMissing(fmt.Sprintf("%s configMap is missing", th.Spec.ConfigMapName))
+			return err
+		}
+		if err == keyMissing {
+			th.Status.MarkDependencyMissing(fmt.Sprintf("%s configMap is missing the keys", th.Spec.ConfigMapName))
+			return err
+		} else {
+			logger.Error(err)
+			return err
+		}
+	}
+
+	_, err = r.kubeClientSet.CoreV1().ConfigMaps(th.Spec.TargetNamespace).Create(ctx, configMap, metav1.CreateOptions{})
 	if err != nil {
 		logger.Error(err)
 		return err
@@ -313,7 +335,7 @@ func (r *Reconciler) validateDBSecretsAreCreated(ctx context.Context, th *v1alph
 }
 
 func (r *Reconciler) getSecretForHub(ctx context.Context, name, namespace string, keys []string) (*corev1.Secret, error) {
-	secret, err := r.kubeClientSet.CoreV1().Secrets(name).Get(ctx, name, metav1.GetOptions{})
+	secret, err := r.kubeClientSet.CoreV1().Secrets(namespace).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -331,6 +353,27 @@ func (r *Reconciler) getSecretForHub(ctx context.Context, name, namespace string
 	}
 
 	return secret, nil
+}
+
+func (r *Reconciler) getConfigMapForHub(ctx context.Context, name, namespace string, keys []string) (*corev1.ConfigMap, error) {
+	configMap, err := r.kubeClientSet.CoreV1().ConfigMaps(namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	allKeys := true
+	for _, key := range keys {
+		if _, ok := configMap.Data[key]; !ok {
+			allKeys = false
+			break
+		}
+	}
+
+	if !allKeys {
+		return nil, keyMissing
+	}
+
+	return configMap, nil
 }
 
 func createSecret(name, namespace string) *corev1.Secret {

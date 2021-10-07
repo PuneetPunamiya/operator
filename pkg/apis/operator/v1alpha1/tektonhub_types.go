@@ -47,19 +47,19 @@ func (tp *TektonHub) GetStatus() TektonComponentStatus {
 }
 
 type DbSpec struct {
-	DbSecretName string `json:"dbSecretName,omitempty"`
+	DbSecretName string `json:"secret,omitempty"`
 }
 
 type ApiSpec struct {
-	ConfigMapName string `json:"configMapName,omitempty"`
-	ApiSecretName string `json:"apiSecretName,omitempty"`
+	ConfigMapName string `json:"configMap,omitempty"`
+	ApiSecretName string `json:"secret,omitempty"`
 }
 
 // TektonResultSpec defines the desired state of TektonResult
 type TektonHubSpec struct {
 	CommonSpec `json:",inline"`
-	DbSpec     `json:",inline"`
-	ApiSpec    `json:",inline"`
+	DbSpec     `json:"db,omitempty"`
+	ApiSpec    `json:"api,omitempty"`
 }
 
 // TektonResultStatus defines the observed state of TektonResult

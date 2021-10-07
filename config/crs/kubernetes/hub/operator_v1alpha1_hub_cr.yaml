@@ -18,7 +18,8 @@ metadata:
   name: hub
 spec:
   targetNamespace: tekton-hub
-  secretName: db
-  apiSpec:
-    secretName: api
-    configMapName: api
+  db:
+    secret: db
+  api:
+    secret: api
+    configMap: api

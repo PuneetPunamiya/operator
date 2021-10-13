@@ -34,6 +34,7 @@ var (
 	persistentVolumeClaim mf.Predicate = mf.Any(mf.ByKind("PersistentVolumeClaim"))
 	deployment            mf.Predicate = mf.Any(mf.ByKind("Deployment"))
 	job                   mf.Predicate = mf.Any(mf.ByKind("Job"))
+	route                 mf.Predicate = mf.Any(mf.ByKind("Route"))
 )
 
 // Install applies the manifest resources for the given version and updates the given
@@ -73,10 +74,11 @@ func Install(ctx context.Context, manifest *mf.Manifest, instance v1alpha1.Tekto
 		status.MarkInstallFailed(err.Error())
 		return fmt.Errorf("failed to apply clusterTriggerBinding: %w", err)
 	}
-	if err := manifest.Filter(mf.Not(mf.Any(role, rolebinding))).Apply(); err != nil {
+	if err := manifest.Filter(mf.Not(mf.Any(role, rolebinding, route))).Apply(); err != nil {
 		status.MarkInstallFailed(err.Error())
 		return fmt.Errorf("failed to apply non rbac manifest: %w", err)
 	}
+
 	status.MarkInstallSucceeded()
 	status.SetVersion(TargetVersion(instance))
 	return nil

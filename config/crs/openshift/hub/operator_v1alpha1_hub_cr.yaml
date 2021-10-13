@@ -17,9 +17,10 @@ kind: TektonHub
 metadata:
   name: hub
 spec:
-  targetNamespace: tekton-hub
-  dbSpec:
-    secretName: db-user
-  apiSpec:
-    secretName: api
-    configMapName: api
+  targetNamespace: openshift-pipelines
+  db:
+    secret: db
+  api:
+    secret: api
+    hubConfigUrl: https://raw.githubusercontent.com/tektoncd/hub/main/config.yaml
+

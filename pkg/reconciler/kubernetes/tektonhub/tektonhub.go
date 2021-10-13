@@ -48,13 +48,12 @@ type Reconciler struct {
 	extension common.Extension
 }
 
-// Check that our Reconciler implements controller.Reconciler
-var _ tektonhubconciler.Interface = (*Reconciler)(nil)
-var _ tektonhubconciler.Finalizer = (*Reconciler)(nil)
-
 var (
-	targetNs   string = "tekton-pipelines"
-	keyMissing error  = fmt.Errorf("secret doesn't contains all the keys")
+	apiConfigMapName string = "api"
+	keyMissing       error  = fmt.Errorf("secret doesn't contains all the keys")
+	// Check that our Reconciler implements controller.Reconciler
+	_ tektonhubconciler.Interface = (*Reconciler)(nil)
+	_ tektonhubconciler.Finalizer = (*Reconciler)(nil)
 )
 
 // FinalizeKind removes all resources after deletion of a TektonHub.
@@ -107,9 +106,6 @@ func (r *Reconciler) ReconcileKind(ctx context.Context, th *v1alpha1.TektonHub) 
 		th.GetStatus().MarkInstallFailed(msg)
 		return nil
 	}
-	// manifest := r.manifest.Append()
-
-	// ownerRef := *metav1.NewControllerRef(th, th.GroupVersionKind())
 
 	// db install
 	// check if the secrets are created
@@ -123,26 +119,8 @@ func (r *Reconciler) ReconcileKind(ctx context.Context, th *v1alpha1.TektonHub) 
 	// apply db related manifests with owner reference
 	manifest, err := r.applyManifest(ctx, dbLocation, th)
 	if err != nil {
-		return nil
+		return err
 	}
-
-	// if err := common.AppendManifest(&manifest, dbLocation); err != nil {
-	// 	return err
-	// }
-
-	// manifest, err := manifest.Transform(
-	// 	injectOwner([]metav1.OwnerReference{ownerRef}),
-	// 	changeNamespace(targetNs),
-	// )
-	// if err != nil {
-	// 	logger.Error("failed to transform manifest")
-	// 	return err
-	// }
-
-	// create the DB
-	// if err := common.Install(ctx, &manifest, th); err != nil {
-	// 	return err
-	// }
 
 	// check whether is DB is up and running
 	if err := common.CheckDeployments(ctx, &manifest, th); err != nil {
@@ -150,29 +128,11 @@ func (r *Reconciler) ReconcileKind(ctx context.Context, th *v1alpha1.TektonHub) 
 	}
 
 	// create DB migration
-	// manifest = r.manifest.Append()
 	dbMigrationLocation := filepath.Join(hubDir, "db-migration")
 	manifest, err = r.applyManifest(ctx, dbMigrationLocation, th)
 	if err != nil {
-		return nil
+		return err
 	}
-
-	// if err := common.AppendManifest(&manifest, dbMigrationLocation); err != nil {
-	// 	return err
-	// }
-
-	// manifest, err = manifest.Transform(
-	// 	injectOwner([]metav1.OwnerReference{ownerRef}),
-	// 	changeNamespace(targetNs),
-	// )
-	// if err != nil {
-	// 	logger.Error("failed to transform manifest")
-	// 	return err
-	// }
-
-	// if err := common.Install(ctx, &manifest, th); err != nil {
-	// 	return err
-	// }
 
 	// whether job succedded or not
 	if err := common.CheckJobs(ctx, &manifest, th); err != nil {
@@ -180,20 +140,7 @@ func (r *Reconciler) ReconcileKind(ctx context.Context, th *v1alpha1.TektonHub) 
 	}
 
 	// create API
-	// manifest = r.manifest.Append()
 	apiLocation := filepath.Join(hubDir, "api")
-
-	// if err := common.AppendManifest(&manifest, apiLocation); err != nil {
-	// 	return err
-	// }
-	// manifest, err = manifest.Transform(
-	// 	injectOwner([]metav1.OwnerReference{ownerRef}),
-	// 	changeNamespace(targetNs),
-	// )
-	// if err != nil {
-	// 	logger.Error("failed to transform manifest")
-	// 	return err
-	// }
 
 	if err := r.validateApiSecrets(ctx, th); err != nil {
 		return err
@@ -205,9 +152,10 @@ func (r *Reconciler) ReconcileKind(ctx context.Context, th *v1alpha1.TektonHub) 
 		return err
 	}
 
-	// if err := common.Install(ctx, &manifest, th); err != nil {
-	// 	return err
-	// }
+	// check whether is DB is up and running
+	if err := common.CheckDeployments(ctx, &manifest, th); err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -218,7 +166,7 @@ func (r *Reconciler) validateApiSecrets(ctx context.Context, th *v1alpha1.Tekton
 	apiSecretKeys := []string{"GH_CLIENT_ID", "GH_CLIENT_SECRET", "JWT_SIGNING_KEY", "ACCESS_JWT_EXPIRES_IN", "REFRESH_JWT_EXPIRES_IN", "GHE_URL"}
 	apiConfigMapKeys := []string{"CONFIG_FILE_URL"}
 
-	_, err := r.getSecretForHub(ctx, th.Spec.ApiSecretName, apiSecretKeys)
+	_, err := r.getSecretForHub(ctx, th.Spec.ApiSecretName, th.Spec.TargetNamespace, apiSecretKeys)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			th.Status.MarkDependencyMissing(fmt.Sprintf("%s secret is missing", th.Spec.ApiSecretName))
@@ -233,14 +181,20 @@ func (r *Reconciler) validateApiSecrets(ctx context.Context, th *v1alpha1.Tekton
 		}
 	}
 
-	_, err = r.getConfigMapForHub(ctx, th.Spec.ConfigMapName, apiConfigMapKeys)
+	_, err = r.getConfigMapForHub(ctx, apiConfigMapName, th.Spec.TargetNamespace, apiConfigMapKeys)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
-			th.Status.MarkDependencyMissing(fmt.Sprintf("%s configMap is missing", th.Spec.ConfigMapName))
-			return err
+			configMap := createConfigMap(apiConfigMapName, th)
+			_, err = r.kubeClientSet.CoreV1().ConfigMaps(th.Spec.TargetNamespace).Create(ctx, configMap, metav1.CreateOptions{})
+			if err != nil {
+				logger.Error(err)
+				th.Status.MarkDependencyMissing(fmt.Sprintf("%s configMap is missing", apiConfigMapName))
+				return err
+			}
+			return nil
 		}
 		if err == keyMissing {
-			th.Status.MarkDependencyMissing(fmt.Sprintf("%s configMap is missing the keys", th.Spec.ConfigMapName))
+			th.Status.MarkDependencyMissing(fmt.Sprintf("%s configMap is missing the keys", apiConfigMapName))
 			return err
 		} else {
 			logger.Error(err)
@@ -257,11 +211,12 @@ func (r *Reconciler) validateDBSecretsAreCreated(ctx context.Context, th *v1alph
 
 	dbKeys := []string{"POSTGRES_DB", "POSTGRES_USER", "POSTGRES_PASSWORD", "POSTGRES_PORT"}
 
-	_, err := r.getSecretForHub(ctx, th.Spec.DbSecretName, dbKeys)
+	dbSecret, err := r.getSecretForHub(ctx, th.Spec.DbSecretName, th.Spec.TargetNamespace, dbKeys)
 	if err != nil {
-		dbSecret := createSecret(th.Spec.DbSecretName)
+		fmt.Println("DBSecret------->", dbSecret)
+		newDbSecret := createSecret(th.Spec.DbSecretName, th.Spec.TargetNamespace, dbSecret)
 		if apierrors.IsNotFound(err) {
-			_, err = r.kubeClientSet.CoreV1().Secrets(targetNs).Create(ctx, dbSecret, metav1.CreateOptions{})
+			_, err = r.kubeClientSet.CoreV1().Secrets(th.Spec.TargetNamespace).Create(ctx, newDbSecret, metav1.CreateOptions{})
 			if err != nil {
 				logger.Error(err)
 				th.Status.MarkDependencyMissing(fmt.Sprintf("%s secret is missing", th.Spec.DbSecretName))
@@ -270,7 +225,7 @@ func (r *Reconciler) validateDBSecretsAreCreated(ctx context.Context, th *v1alph
 			return nil
 		}
 		if err == keyMissing {
-			_, err = r.kubeClientSet.CoreV1().Secrets(targetNs).Update(ctx, dbSecret, metav1.UpdateOptions{})
+			_, err = r.kubeClientSet.CoreV1().Secrets(th.Spec.TargetNamespace).Update(ctx, newDbSecret, metav1.UpdateOptions{})
 			if err != nil {
 				logger.Error(err)
 				th.Status.MarkDependencyMissing(fmt.Sprintf("%s secret is missing", th.Spec.DbSecretName))
@@ -285,7 +240,7 @@ func (r *Reconciler) validateDBSecretsAreCreated(ctx context.Context, th *v1alph
 	return nil
 }
 
-func (r *Reconciler) getSecretForHub(ctx context.Context, name string, keys []string) (*corev1.Secret, error) {
+func (r *Reconciler) getSecretForHub(ctx context.Context, name, targetNs string, keys []string) (*corev1.Secret, error) {
 	secret, err := r.kubeClientSet.CoreV1().Secrets(targetNs).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		return nil, err
@@ -306,7 +261,7 @@ func (r *Reconciler) getSecretForHub(ctx context.Context, name string, keys []st
 	return secret, nil
 }
 
-func (r *Reconciler) getConfigMapForHub(ctx context.Context, name string, keys []string) (*corev1.ConfigMap, error) {
+func (r *Reconciler) getConfigMapForHub(ctx context.Context, name, targetNs string, keys []string) (*corev1.ConfigMap, error) {
 	configMap, err := r.kubeClientSet.CoreV1().ConfigMaps(targetNs).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		return nil, err
@@ -327,24 +282,56 @@ func (r *Reconciler) getConfigMapForHub(ctx context.Context, name string, keys [
 	return configMap, nil
 }
 
-func createSecret(name string) *corev1.Secret {
-	return &corev1.Secret{
+func createConfigMap(name string, th *v1alpha1.TektonHub) *corev1.ConfigMap {
+	return &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
-			Namespace: targetNs,
+			Namespace: th.Spec.TargetNamespace,
 			Labels: map[string]string{
-				"apps": "db",
+				"app": "api",
+			},
+		},
+		Data: map[string]string{
+			"CONFIG_FILE_URL": th.Spec.HubConfigUrl,
+		},
+	}
+}
+
+func createSecret(name, namespace string, existingSecret *corev1.Secret) *corev1.Secret {
+	s := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+			Labels: map[string]string{
+				"app": "db",
 			},
 		},
 		Type: corev1.SecretTypeOpaque,
-		StringData: map[string]string{
-			"POSTGRES_DB":       "hub",
-			"POSTGRES_USER":     "postgres",
-			"POSTGRES_PASSWORD": "postgres",
-			"POSTGRES_PORT":     "5432",
-		},
 	}
 
+	if existingSecret != nil && existingSecret.Data != nil {
+		s.Data = existingSecret.Data
+	}
+
+	s.StringData = make(map[string]string, 0)
+
+	if s.Data["POSTGRES_DB"] == nil || len(s.Data["POSTGRES_DB"]) == 0 {
+		s.StringData["POSTGRES_DB"] = "hub"
+	}
+
+	if s.Data["POSTGRES_USER"] == nil || len(s.Data["POSTGRES_USER"]) == 0 {
+		s.StringData["POSTGRES_USER"] = "postgres"
+	}
+
+	if s.Data["POSTGRES_PASSWORD"] == nil || len(s.Data["POSTGRES_PASSWORD"]) == 0 {
+		s.StringData["POSTGRES_PASSWORD"] = "postgres"
+	}
+
+	if s.Data["POSTGRES_PORT"] == nil || len(s.Data["POSTGRES_PORT"]) == 0 {
+		s.StringData["POSTGRES_PORT"] = "5432"
+	}
+
+	return s
 }
 
 func (r *Reconciler) applyManifest(ctx context.Context, manifestLocation string, th *v1alpha1.TektonHub) (mf.Manifest, error) {
@@ -357,7 +344,7 @@ func (r *Reconciler) applyManifest(ctx context.Context, manifestLocation string,
 	}
 	manifest, err := manifest.Transform(
 		injectOwner([]metav1.OwnerReference{ownerRef}),
-		changeNamespace(targetNs),
+		changeNamespace(th.Spec.TargetNamespace),
 	)
 	if err != nil {
 		logger.Error("failed to transform manifest")
@@ -369,19 +356,6 @@ func (r *Reconciler) applyManifest(ctx context.Context, manifestLocation string,
 		return manifest, err
 	}
 	return manifest, nil
-}
-
-// transform mutates the passed manifest to one with common, component
-// and platform transformations applied
-func (r *Reconciler) transform(ctx context.Context, manifest *mf.Manifest, comp v1alpha1.TektonComponent) error {
-	instance := comp.(*v1alpha1.TektonHub)
-	targetNs := comp.GetSpec().GetTargetNamespace()
-	extra := []mf.Transformer{
-		common.ReplaceNamespaceInDeploymentArgs(targetNs),
-		common.ReplaceNamespaceInDeploymentEnv(targetNs),
-	}
-	extra = append(extra, r.extension.Transformers(instance)...)
-	return common.Transform(ctx, manifest, instance, extra...)
 }
 
 func (r *Reconciler) installed(ctx context.Context, instance v1alpha1.TektonComponent) (*mf.Manifest, error) {

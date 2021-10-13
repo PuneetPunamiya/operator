@@ -23,7 +23,7 @@ var (
 	_ TektonComponentSpec = (*TektonHubSpec)(nil)
 )
 
-// TektonResult is the Schema for the tektonresults API
+// TektonHub is the Schema for the tektonhub API
 // +genclient
 // +genreconciler:krshapedlogic=false
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
@@ -51,7 +51,7 @@ type DbSpec struct {
 }
 
 type ApiSpec struct {
-	ConfigMapName string `json:"configMap,omitempty"`
+	HubConfigUrl  string `json:"hubConfigUrl,omitempty"`
 	ApiSecretName string `json:"secret,omitempty"`
 }
 

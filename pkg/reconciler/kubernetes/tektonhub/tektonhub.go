@@ -157,6 +157,10 @@ func (r *Reconciler) ReconcileKind(ctx context.Context, th *v1alpha1.TektonHub) 
 		return err
 	}
 
+	if err := r.extension.PostReconcile(ctx, th); err != nil {
+		return err
+	}
+
 	return nil
 }
 

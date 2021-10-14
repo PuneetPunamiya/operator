@@ -100,6 +100,8 @@ func (oe openshiftExtension) PostReconcile(ctx context.Context, tc v1alpha1.Tekt
 		return err
 	}
 
+	th.Status.SetApiRoute("hello world")
+
 	return nil
 }
 func (oe openshiftExtension) Finalize(context.Context, v1alpha1.TektonComponent) error {

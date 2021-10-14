@@ -73,6 +73,8 @@ type TektonHubStatus struct {
 	// The url links of the manifests, separated by comma
 	// +optional
 	Manifests []string `json:"manifests,omitempty"`
+
+	ApiRouteUrl string `json:"apiUrl,omitempty"`
 }
 
 // TektonResultsList contains a list of TektonResult

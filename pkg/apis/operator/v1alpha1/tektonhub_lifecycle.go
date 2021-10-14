@@ -121,3 +121,13 @@ func (ths *TektonHubStatus) GetManifests() []string {
 func (ths *TektonHubStatus) SetManifests(manifests []string) {
 	ths.Manifests = manifests
 }
+
+// GetManifests gets the url links of the manifests.
+func (ths *TektonHubStatus) GetApiRoute() string {
+	return ths.ApiRouteUrl
+}
+
+// SetManifests sets the url links of the manifests.
+func (ths *TektonHubStatus) SetApiRoute(routeUrl string) {
+	ths.ApiRouteUrl = routeUrl
+}

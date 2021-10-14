@@ -44,6 +44,9 @@ spec:
         - jsonPath: '.status.conditions[?(@.type=="Ready")].reason'
           name: Reason
           type: string
+        - jsonPath: .status.apiUrl
+          name: ApiUrl
+          type: string
       schema:
         openAPIV3Schema:
           type: object

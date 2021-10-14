@@ -28,6 +28,8 @@ import (
 	"github.com/go-logr/zapr"
 	mfc "github.com/manifestival/client-go-client"
 	mf "github.com/manifestival/manifestival"
+	routev1 "github.com/openshift/api/route/v1"
+	"github.com/openshift/client-go/route/clientset/versioned/scheme"
 	"github.com/tektoncd/operator/pkg/apis/operator/v1alpha1"
 	"github.com/tektoncd/operator/pkg/client/clientset/versioned"
 	operatorclient "github.com/tektoncd/operator/pkg/client/injection/client"
@@ -100,7 +102,12 @@ func (oe openshiftExtension) PostReconcile(ctx context.Context, tc v1alpha1.Tekt
 		return err
 	}
 
-	th.Status.SetApiRoute("hello world")
+	route, err := getRouteHost(&manifest)
+	if err != nil {
+		return err
+	}
+
+	th.Status.SetApiRoute(route)
 
 	return nil
 }
@@ -127,4 +134,22 @@ func changeNamespace(targetNamespace string) mf.Transformer {
 		}
 		return nil
 	}
+}
+
+func getRouteHost(manifest *mf.Manifest) (string, error) {
+	var hostUrl string
+	for _, r := range manifest.Filter(mf.ByKind("Route")).Resources() {
+		u, err := manifest.Client.Get(&r)
+		if err != nil {
+			return "", err
+		}
+		if u.GetName() == "api" {
+			route := &routev1.Route{}
+			if err := scheme.Scheme.Convert(u, route, nil); err != nil {
+				return "", err
+			}
+			hostUrl = route.Spec.Host
+		}
+	}
+	return hostUrl, nil
 }

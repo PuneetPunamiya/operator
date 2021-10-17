@@ -22,12 +22,12 @@ import (
 
 func (tc *TektonHub) SetDefaults(ctx context.Context) {
 
-	if tc.Spec.DbSecretName == "" {
-		tc.Spec.DbSecretName = "db"
+	if tc.Spec.Db.DbSecretName == "" {
+		tc.Spec.Db.DbSecretName = "db"
 	}
 
-	if tc.Spec.ApiSecretName == "" {
-		tc.Spec.ApiSecretName = "api"
+	if tc.Spec.Api.ApiSecretName == "" {
+		tc.Spec.Api.ApiSecretName = "api"
 	}
 
 }

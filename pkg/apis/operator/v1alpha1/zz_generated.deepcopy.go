@@ -751,8 +751,8 @@ func (in *TektonHubList) DeepCopyObject() runtime.Object {
 func (in *TektonHubSpec) DeepCopyInto(out *TektonHubSpec) {
 	*out = *in
 	out.CommonSpec = in.CommonSpec
-	out.DbSpec = in.DbSpec
-	out.ApiSpec = in.ApiSpec
+	out.Db = in.Db
+	out.Api = in.Api
 	return
 }
 
@@ -774,6 +774,13 @@ func (in *TektonHubStatus) DeepCopyInto(out *TektonHubStatus) {
 		in, out := &in.Manifests, &out.Manifests
 		*out = make([]string, len(*in))
 		copy(*out, *in)
+	}
+	if in.TektonInstallerSet != nil {
+		in, out := &in.TektonInstallerSet, &out.TektonInstallerSet
+		*out = make(map[string]string, len(*in))
+		for key, val := range *in {
+			(*out)[key] = val
+		}
 	}
 	return
 }

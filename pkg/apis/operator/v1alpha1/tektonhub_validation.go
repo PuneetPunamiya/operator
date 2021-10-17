@@ -33,7 +33,7 @@ func (tp *TektonHub) Validate(ctx context.Context) (errs *apis.FieldError) {
 		errs = errs.Also(apis.ErrMissingField("spec.targetNamespace"))
 	}
 
-	return errs.Also(tp.Spec.ApiSpec.validate("spec.api"), tp.Spec.DbSpec.validate("spec.db"))
+	return errs.Also(tp.Spec.Api.validate("spec.api"), tp.Spec.Db.validate("spec.db"))
 }
 
 func (api *ApiSpec) validate(path string) (errs *apis.FieldError) {

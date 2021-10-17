@@ -58,8 +58,8 @@ type ApiSpec struct {
 // TektonResultSpec defines the desired state of TektonResult
 type TektonHubSpec struct {
 	CommonSpec `json:",inline"`
-	DbSpec     `json:"db,omitempty"`
-	ApiSpec    `json:"api,omitempty"`
+	Db         DbSpec  `json:"db,omitempty"`
+	Api        ApiSpec `json:"api,omitempty"`
 }
 
 // TektonResultStatus defines the observed state of TektonResult
@@ -75,6 +75,10 @@ type TektonHubStatus struct {
 	Manifests []string `json:"manifests,omitempty"`
 
 	ApiRouteUrl string `json:"apiUrl,omitempty"`
+
+	// The current installer set name
+	// +optional
+	TektonInstallerSet map[string]string `json:"tektonInstallerSets,omitempty"`
 }
 
 // TektonResultsList contains a list of TektonResult

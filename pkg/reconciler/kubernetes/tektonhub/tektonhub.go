@@ -170,14 +170,14 @@ func (r *Reconciler) validateApiSecrets(ctx context.Context, th *v1alpha1.Tekton
 	apiSecretKeys := []string{"GH_CLIENT_ID", "GH_CLIENT_SECRET", "JWT_SIGNING_KEY", "ACCESS_JWT_EXPIRES_IN", "REFRESH_JWT_EXPIRES_IN", "GHE_URL"}
 	apiConfigMapKeys := []string{"CONFIG_FILE_URL"}
 
-	_, err := r.getSecretForHub(ctx, th.Spec.ApiSecretName, th.Spec.TargetNamespace, apiSecretKeys)
+	_, err := r.getSecretForHub(ctx, th.Spec.Api.ApiSecretName, th.Spec.TargetNamespace, apiSecretKeys)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
-			th.Status.MarkDependencyMissing(fmt.Sprintf("%s secret is missing", th.Spec.ApiSecretName))
+			th.Status.MarkDependencyMissing(fmt.Sprintf("%s secret is missing", th.Spec.Api.ApiSecretName))
 			return err
 		}
 		if err == keyMissing {
-			th.Status.MarkDependencyMissing(fmt.Sprintf("%s secret is missing the keys", th.Spec.ApiSecretName))
+			th.Status.MarkDependencyMissing(fmt.Sprintf("%s secret is missing the keys", th.Spec.Api.ApiSecretName))
 			return err
 		} else {
 			logger.Error(err)
@@ -215,15 +215,15 @@ func (r *Reconciler) validateDBSecretsAreCreated(ctx context.Context, th *v1alph
 
 	dbKeys := []string{"POSTGRES_DB", "POSTGRES_USER", "POSTGRES_PASSWORD", "POSTGRES_PORT"}
 
-	dbSecret, err := r.getSecretForHub(ctx, th.Spec.DbSecretName, th.Spec.TargetNamespace, dbKeys)
+	dbSecret, err := r.getSecretForHub(ctx, th.Spec.Db.DbSecretName, th.Spec.TargetNamespace, dbKeys)
 	if err != nil {
 		fmt.Println("DBSecret------->", dbSecret)
-		newDbSecret := createSecret(th.Spec.DbSecretName, th.Spec.TargetNamespace, dbSecret)
+		newDbSecret := createSecret(th.Spec.Db.DbSecretName, th.Spec.TargetNamespace, dbSecret)
 		if apierrors.IsNotFound(err) {
 			_, err = r.kubeClientSet.CoreV1().Secrets(th.Spec.TargetNamespace).Create(ctx, newDbSecret, metav1.CreateOptions{})
 			if err != nil {
 				logger.Error(err)
-				th.Status.MarkDependencyMissing(fmt.Sprintf("%s secret is missing", th.Spec.DbSecretName))
+				th.Status.MarkDependencyMissing(fmt.Sprintf("%s secret is missing", th.Spec.Db.DbSecretName))
 				return err
 			}
 			return nil
@@ -232,7 +232,7 @@ func (r *Reconciler) validateDBSecretsAreCreated(ctx context.Context, th *v1alph
 			_, err = r.kubeClientSet.CoreV1().Secrets(th.Spec.TargetNamespace).Update(ctx, newDbSecret, metav1.UpdateOptions{})
 			if err != nil {
 				logger.Error(err)
-				th.Status.MarkDependencyMissing(fmt.Sprintf("%s secret is missing", th.Spec.DbSecretName))
+				th.Status.MarkDependencyMissing(fmt.Sprintf("%s secret is missing", th.Spec.Db.DbSecretName))
 				return err
 			}
 		} else {
@@ -296,7 +296,7 @@ func createConfigMap(name string, th *v1alpha1.TektonHub) *corev1.ConfigMap {
 			},
 		},
 		Data: map[string]string{
-			"CONFIG_FILE_URL": th.Spec.HubConfigUrl,
+			"CONFIG_FILE_URL": th.Spec.Api.HubConfigUrl,
 		},
 	}
 }

@@ -1,9 +1,12 @@
 /*
-Copyright 2021 The Tekton Authors
+Copyright 2020 The Tekton Authors
+
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
-    httr://www.apache.org/licenses/LICENSE-2.0
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -18,12 +21,30 @@ import (
 	"knative.dev/pkg/apis"
 )
 
+const (
+	DbDependenciesInstalled  apis.ConditionType = "DbDependenciesInstalled"
+	ApiDependenciesInstalled apis.ConditionType = "ApiDependenciesInstalled"
+	UiDependenciesInstalled  apis.ConditionType = "UiDependenciesInstalled"
+	DbAvailable              apis.ConditionType = "DbAvailable"
+	ApiAvailable             apis.ConditionType = "ApiAvailable"
+	UiAvailable              apis.ConditionType = "UiAvailable"
+)
+
 var (
-	_          TektonComponentStatus = (*TektonHubStatus)(nil)
-	hubCondSet                       = apis.NewLivingConditionSet(
-		DependenciesInstalled,
-		DeploymentsAvailable,
+	// TODO: Add this back after refactoring all components
+	// and updating TektonComponentStatus to have updated
+	// conditions
+	// _ TektonComponentStatus = (*TektonHubStatus)(nil)
+
+	hubCondSet = apis.NewLivingConditionSet(
+		DbDependenciesInstalled,
+		DbAvailable,
+		ApiDependenciesInstalled,
+		ApiAvailable,
+		UiDependenciesInstalled,
+		UiAvailable,
 		InstallSucceeded,
+		PostReconciler,
 	)
 )
 

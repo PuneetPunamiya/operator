@@ -150,6 +150,7 @@ func (r *Reconciler) ReconcileKind(ctx context.Context, th *v1alpha1.TektonHub) 
 	}
 
 	if !exist {
+		th.Status.MarkDbInstallerSetNotAvailable("DB installer set not available")
 		dbLocation := filepath.Join(hubDir, "db")
 		err := r.applyManifest(ctx, dbLocation, th, dbInstallerSet, version, "hub-db")
 		if err != nil {
@@ -163,21 +164,9 @@ func (r *Reconciler) ReconcileKind(ctx context.Context, th *v1alpha1.TektonHub) 
 		return err
 	}
 
-	fmt.Println("Flow continued.....................")
+	th.Status.MarkDbInstallerSetAvailable()
 
-	// dbLocation := filepath.Join(hubDir, "db")
-
-	// // apply db related manifests with owner reference
-	// manifest, err := r.applyManifest(ctx, dbLocation, th)
-	// if err != nil {
-	// 	return err
-	// }
-
-	// // check whether is DB is up and running
-	// if err := common.CheckDeployments(ctx, &manifest, th); err != nil {
-	// 	return err
-	// }
-
+	// db-migration
 	exist, err = checkIfInstallerSetExist(ctx, r.operatorClientSet, version, th, dbMigrationInstallerSet)
 	if err != nil {
 		return err
@@ -190,18 +179,6 @@ func (r *Reconciler) ReconcileKind(ctx context.Context, th *v1alpha1.TektonHub) 
 			return err
 		}
 	}
-
-	// create DB migration
-	// dbMigrationLocation := filepath.Join(hubDir, "db-migration")
-	// manifest, err = r.applyManifest(ctx, dbMigrationLocation, th)
-	// if err != nil {
-	// 	return err
-	// }
-
-	// whether job succedded or not
-	// if err := common.CheckJobs(ctx, &manifest, th); err != nil {
-	// 	return err
-	// }
 
 	// create API
 
@@ -218,6 +195,7 @@ func (r *Reconciler) ReconcileKind(ctx context.Context, th *v1alpha1.TektonHub) 
 	}
 
 	if !exist {
+		th.Status.MarkApiInstallerSetNotAvailable("API installer set not available")
 		apiLocation := filepath.Join(hubDir, "api")
 		err := r.applyManifest(ctx, apiLocation, th, apiInstallerSet, version, "hub-api")
 		if err != nil {
@@ -225,24 +203,13 @@ func (r *Reconciler) ReconcileKind(ctx context.Context, th *v1alpha1.TektonHub) 
 		}
 	}
 
-	// apiLocation := filepath.Join(hubDir, "api")
-
-	// apply api related manifests
-	// manifest, err = r.applyManifest(ctx, apiLocation, th)
-	// if err != nil {
-	// 	return err
-	// }
-
-	// // check whether is DB is up and running
-	// if err := common.CheckDeployments(ctx, &manifest, th); err != nil {
-	// 	return err
-	// }
+	th.Status.MarkApiInstallerSetAvailable()
 
 	if err := r.extension.PostReconcile(ctx, th); err != nil {
 		return err
 	}
 
-	th.Status.MarkInstallSucceeded()
+	th.Status.MarkPostReconcilerComplete()
 
 	return nil
 }
@@ -258,11 +225,11 @@ func (r *Reconciler) validateApiSecrets(ctx context.Context, th *v1alpha1.Tekton
 	_, err := r.getSecretForHub(ctx, th.Spec.Api.ApiSecretName, th.Spec.TargetNamespace, apiSecretKeys)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
-			th.Status.MarkDependencyMissing(fmt.Sprintf("%s secret is missing", th.Spec.Api.ApiSecretName))
+			th.Status.MarkApiDependencyMissing(fmt.Sprintf("%s secret is missing", th.Spec.Api.ApiSecretName))
 			return err
 		}
 		if err == keyMissing {
-			th.Status.MarkDependencyMissing(fmt.Sprintf("%s secret is missing the keys", th.Spec.Api.ApiSecretName))
+			th.Status.MarkApiDependencyMissing(fmt.Sprintf("%s secret is missing the keys", th.Spec.Api.ApiSecretName))
 			return err
 		} else {
 			logger.Error(err)
@@ -277,13 +244,13 @@ func (r *Reconciler) validateApiSecrets(ctx context.Context, th *v1alpha1.Tekton
 			_, err = r.kubeClientSet.CoreV1().ConfigMaps(th.Spec.TargetNamespace).Create(ctx, configMap, metav1.CreateOptions{})
 			if err != nil {
 				logger.Error(err)
-				th.Status.MarkDependencyMissing(fmt.Sprintf("%s configMap is missing", apiConfigMapName))
+				th.Status.MarkApiDependencyMissing(fmt.Sprintf("%s configMap is missing", apiConfigMapName))
 				return err
 			}
 			return nil
 		}
 		if err == keyMissing {
-			th.Status.MarkDependencyMissing(fmt.Sprintf("%s configMap is missing the keys", apiConfigMapName))
+			th.Status.MarkApiDependencyMissing(fmt.Sprintf("%s configMap is missing the keys", apiConfigMapName))
 			return err
 		} else {
 			logger.Error(err)
@@ -310,7 +277,7 @@ func (r *Reconciler) validateDBSecretsAreCreated(ctx context.Context, th *v1alph
 			_, err = r.kubeClientSet.CoreV1().Secrets(th.Spec.TargetNamespace).Create(ctx, newDbSecret, metav1.CreateOptions{})
 			if err != nil {
 				logger.Error(err)
-				th.Status.MarkDependencyMissing(fmt.Sprintf("%s secret is missing", th.Spec.Db.DbSecretName))
+				th.Status.MarkDbDependencyMissing(fmt.Sprintf("%s secret is missing", th.Spec.Db.DbSecretName))
 				return err
 			}
 			return nil
@@ -319,7 +286,7 @@ func (r *Reconciler) validateDBSecretsAreCreated(ctx context.Context, th *v1alph
 			_, err = r.kubeClientSet.CoreV1().Secrets(th.Spec.TargetNamespace).Update(ctx, newDbSecret, metav1.UpdateOptions{})
 			if err != nil {
 				logger.Error(err)
-				th.Status.MarkDependencyMissing(fmt.Sprintf("%s secret is missing", th.Spec.Db.DbSecretName))
+				th.Status.MarkDbDependencyMissing(fmt.Sprintf("%s secret is missing", th.Spec.Db.DbSecretName))
 				return err
 			}
 		} else {
@@ -441,11 +408,6 @@ func (r *Reconciler) applyManifest(ctx context.Context, manifestLocation string,
 		logger.Error("failed to transform manifest")
 		return err
 	}
-
-	// install the manifests
-	// if err := common.Install(ctx, &manifest, th); err != nil {
-	// 	return manifest, err
-	// }
 
 	if err := createInstallerSet(ctx, r.operatorClientSet, th, manifest,
 		version, installerSetName, prefixName); err != nil {
@@ -607,8 +569,6 @@ func (r *Reconciler) checkComponentStatus(ctx context.Context, th *v1alpha1.Tekt
 			return fmt.Errorf("InstallerSet %s: ", ready.Message)
 		}
 	}
-
-	fmt.Println("checkComponent Status nil returned")
 
 	return nil
 }

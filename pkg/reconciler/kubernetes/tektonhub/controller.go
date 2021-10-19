@@ -69,7 +69,8 @@ func NewExtendedController(generator common.ExtensionGenerator) injection.Contro
 		tektonHubInformer.Informer().AddEventHandler(controller.HandleAll(impl.Enqueue))
 
 		tektonHubInformer.Informer().AddEventHandler(cache.FilteringResourceEventHandler{
-			FilterFunc: controller.FilterControllerGVK(v1alpha1.SchemeGroupVersion.WithKind("TektonHub")),
+			// FilterFunc: controller.FilterControllerGVK(v1alpha1.SchemeGroupVersion.WithKind("TektonHub")),
+			FilterFunc: controller.FilterController(&v1alpha1.TektonHub{}),
 			Handler:    controller.HandleAll(impl.EnqueueControllerOf),
 		})
 		return impl

@@ -23,4 +23,3 @@ spec:
   api:
     secret: api
     hubConfigUrl: https://raw.githubusercontent.com/tektoncd/hub/main/config.yaml
-

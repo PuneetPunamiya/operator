@@ -28,28 +28,28 @@ const (
 	ApiDependenciesInstalled apis.ConditionType = "ApiDependenciesInstalled"
 	ApiInstallerSetAvaible   apis.ConditionType = "ApiInstallSetAvailable"
 	ApiInstallerSetReady     apis.ConditionType = "ApiInstallSetReady"
-	UiDependenciesInstalled  apis.ConditionType = "UiDependenciesInstalled"
-	UiInstallerSetAvaible    apis.ConditionType = "UiInstallSetAvailable"
-	UiInstallerSetReady      apis.ConditionType = "UiInstallSetReady"
+	// UiDependenciesInstalled  apis.ConditionType = "UiDependenciesInstalled"
+	// UiInstallerSetAvaible    apis.ConditionType = "UiInstallSetAvailable"
+	// UiInstallerSetReady      apis.ConditionType = "UiInstallSetReady"
 )
 
 var (
 	// TODO: Add this back after refactoring all components
 	// and updating TektonComponentStatus to have updated
 	// conditions
-	_ TektonComponentStatus = (*TektonHubStatus)(nil)
+	// _ TektonComponentStatus = (*TektonHubStatus)(nil)
 
 	hubCondSet = apis.NewLivingConditionSet(
 		DbDependenciesInstalled,
 		DbInstallerSetAvaible,
-		DbInstallerSetReady,
+		// DbInstallerSetReady,
 		ApiDependenciesInstalled,
 		ApiInstallerSetAvaible,
-		ApiInstallerSetReady,
-		UiDependenciesInstalled,
-		UiInstallerSetAvaible,
-		UiInstallerSetReady,
-		InstallSucceeded,
+		// ApiInstallerSetReady,
+		// UiDependenciesInstalled,
+		// UiInstallerSetAvaible,
+		// UiInstallerSetReady,
+		// InstallSucceeded,
 		PostReconciler,
 	)
 )
@@ -59,6 +59,8 @@ func (th *TektonHub) GroupVersionKind() schema.GroupVersionKind {
 	return SchemeGroupVersion.WithKind(KindTektonHub)
 }
 
+// required by new type of FilterController
+// might have to keep this and remove previous or vice-versa
 func (th *TektonHub) GetGroupVersionKind() schema.GroupVersionKind {
 	return SchemeGroupVersion.WithKind(KindTektonHub)
 }
@@ -85,34 +87,24 @@ func (ths *TektonHubStatus) MarkNotReady(msg string) {
 		"Ready: %s", msg)
 }
 
-func (ths *TektonHubStatus) MarkDbDependencyInstalling(msg string) {
-	ths.MarkNotReady("Dependencies installing")
+func (ths *TektonHubStatus) MarkPostReconcilerComplete() {
+	hubCondSet.Manage(ths).MarkTrue(PostReconciler)
+}
+
+func (ths *TektonHubStatus) MarkPostReconcilerFailed(msg string) {
+	ths.MarkNotReady("PostReconciliation failed")
 	hubCondSet.Manage(ths).MarkFalse(
-		DbDependenciesInstalled,
+		PostReconciler,
 		"Error",
-		"Dependencies are installing for Db: %s", msg)
+		"PostReconciliation failed with message: %s", msg)
 }
-
-func (ths *TektonHubStatus) MarkDbDependencyMissing(msg string) {
-	ths.MarkNotReady("Missing Dependencies for DB")
-	hubCondSet.Manage(ths).MarkFalse(
-		DbDependenciesInstalled,
-		"Error",
-		"Dependencies are missing: %s", msg)
-}
-
-func (ths *TektonHubStatus) MarkDbDependenciesInstalled() {
-	hubCondSet.Manage(ths).MarkTrue(DbDependenciesInstalled)
-}
-
-// API
 
 func (ths *TektonHubStatus) MarkApiDependencyInstalling(msg string) {
-	ths.MarkNotReady("Dependencies installing")
+	ths.MarkNotReady("Dependencies installing for API")
 	hubCondSet.Manage(ths).MarkFalse(
 		ApiDependenciesInstalled,
 		"Error",
-		"Dependencies are installing for Api: %s", msg)
+		"Dependencies are installing for API: %s", msg)
 }
 
 func (ths *TektonHubStatus) MarkApiDependencyMissing(msg string) {
@@ -120,88 +112,41 @@ func (ths *TektonHubStatus) MarkApiDependencyMissing(msg string) {
 	hubCondSet.Manage(ths).MarkFalse(
 		ApiDependenciesInstalled,
 		"Error",
-		"Dependencies are missing: %s", msg)
+		"Dependencies are missing for API: %s", msg)
 }
 
 func (ths *TektonHubStatus) MarkApiDependenciesInstalled() {
 	hubCondSet.Manage(ths).MarkTrue(ApiDependenciesInstalled)
 }
 
-// Ui
-
-func (ths *TektonHubStatus) MarkUiDependencyInstalling(msg string) {
-	ths.MarkNotReady("Dependencies installing")
+func (ths *TektonHubStatus) MarkDbDependencyInstalling(msg string) {
+	ths.MarkNotReady("Dependencies installing for DB")
 	hubCondSet.Manage(ths).MarkFalse(
-		UiDependenciesInstalled,
+		DbDependenciesInstalled,
 		"Error",
-		"Dependencies are installing for UI: %s", msg)
+		"Dependencies are installing for DB: %s", msg)
 }
 
-func (ths *TektonHubStatus) MarkUiDependencyMissing(msg string) {
-	ths.MarkNotReady("Missing Dependencies for UI")
+// GetManifests gets the url links of the manifests.
+func (ths *TektonHubStatus) GetManifests() []string {
+	return ths.Manifests
+}
+
+// SetManifests sets the url links of the manifests.
+func (ths *TektonHubStatus) SetManifests(manifests []string) {
+	ths.Manifests = manifests
+}
+
+func (ths *TektonHubStatus) MarkDbDependencyMissing(msg string) {
+	ths.MarkNotReady("Missing Dependencies for DB")
 	hubCondSet.Manage(ths).MarkFalse(
-		UiDependenciesInstalled,
+		DbDependenciesInstalled,
 		"Error",
-		"Dependencies are missing: %s", msg)
+		"Dependencies are missing for DB: %s", msg)
 }
 
-func (ths *TektonHubStatus) MarkUIDependenciesInstalled() {
-	hubCondSet.Manage(ths).MarkTrue(UiDependenciesInstalled)
-}
-
-// MarkInstallSucceeded marks the InstallationSucceeded status as true.
-func (ths *TektonHubStatus) MarkInstallSucceeded() {
-	hubCondSet.Manage(ths).MarkTrue(InstallSucceeded)
-	if ths.GetCondition(DependenciesInstalled).IsUnknown() {
-		// Assume deps are installed if we're not sure
-		ths.MarkDependenciesInstalled()
-	}
-}
-
-// MarkInstallFailed marks the InstallationSucceeded status as false with the given
-// message.
-func (ths *TektonHubStatus) MarkInstallFailed(msg string) {
-	hubCondSet.Manage(ths).MarkFalse(
-		InstallSucceeded,
-		"Error",
-		"Install failed with message: %s", msg)
-}
-
-// MarkDeploymentsAvailable marks the DeploymentsAvailable status as true.
-func (ths *TektonHubStatus) MarkDeploymentsAvailable() {
-	hubCondSet.Manage(ths).MarkTrue(DeploymentsAvailable)
-}
-
-// MarkDeploymentsNotReady marks the DeploymentsAvailable status as false and calls out
-// it's waiting for deployments.
-func (ths *TektonHubStatus) MarkDeploymentsNotReady() {
-	hubCondSet.Manage(ths).MarkFalse(
-		DeploymentsAvailable,
-		"NotReady",
-		"Waiting on deployments")
-}
-
-// MarkDependenciesInstalled marks the DependenciesInstalled status as true.
-func (ths *TektonHubStatus) MarkDependenciesInstalled() {
-	hubCondSet.Manage(ths).MarkTrue(DependenciesInstalled)
-}
-
-// MarkDependencyInstalling marks the DependenciesInstalled status as false with the
-// given message.
-func (ths *TektonHubStatus) MarkDependencyInstalling(msg string) {
-	hubCondSet.Manage(ths).MarkFalse(
-		DependenciesInstalled,
-		"Installing",
-		"Dependency installing: %s", msg)
-}
-
-// MarkDependencyMissing marks the DependenciesInstalled status as false with the
-// given message.
-func (ths *TektonHubStatus) MarkDependencyMissing(msg string) {
-	hubCondSet.Manage(ths).MarkFalse(
-		DependenciesInstalled,
-		"Error",
-		"Dependency missing: %s", msg)
+func (ths *TektonHubStatus) MarkDbDependenciesInstalled() {
+	hubCondSet.Manage(ths).MarkTrue(DbDependenciesInstalled)
 }
 
 // GetVersion gets the currently installed version of the component.
@@ -215,16 +160,6 @@ func (ths *TektonHubStatus) SetVersion(version string) {
 }
 
 // GetManifests gets the url links of the manifests.
-func (ths *TektonHubStatus) GetManifests() []string {
-	return ths.Manifests
-}
-
-// SetManifests sets the url links of the manifests.
-func (ths *TektonHubStatus) SetManifests(manifests []string) {
-	ths.Manifests = manifests
-}
-
-// GetManifests gets the url links of the manifests.
 func (ths *TektonHubStatus) GetApiRoute() string {
 	return ths.ApiRouteUrl
 }
@@ -232,4 +167,86 @@ func (ths *TektonHubStatus) GetApiRoute() string {
 // SetManifests sets the url links of the manifests.
 func (ths *TektonHubStatus) SetApiRoute(routeUrl string) {
 	ths.ApiRouteUrl = routeUrl
+}
+
+func (ths *TektonHubStatus) MarkDbInstallerSetNotReady(msg string) {
+	ths.MarkNotReady("TektonInstallerSet not ready for DB")
+	hubCondSet.Manage(ths).MarkFalse(
+		DbInstallerSetReady,
+		"Error",
+		"Installer set not ready: %s", msg)
+}
+
+func (ths *TektonHubStatus) MarkDbInstallerSetReady() {
+	hubCondSet.Manage(ths).MarkTrue(DbInstallerSetReady)
+}
+
+func (ths *TektonHubStatus) MarkDbInstallerSetNotAvailable(msg string) {
+	ths.MarkNotReady("TektonInstallerSet not ready for DB")
+	hubCondSet.Manage(ths).MarkFalse(
+		DbInstallerSetAvaible,
+		"Error",
+		"Installer set not ready: %s", msg)
+}
+
+func (ths *TektonHubStatus) MarkDbInstallerSetAvailable() {
+	hubCondSet.Manage(ths).MarkTrue(DbInstallerSetAvaible)
+}
+
+// for API
+
+func (ths *TektonHubStatus) MarkApiInstallerSetNotReady(msg string) {
+	ths.MarkNotReady("TektonInstallerSet not ready for API")
+	hubCondSet.Manage(ths).MarkFalse(
+		ApiInstallerSetReady,
+		"Error",
+		"Installer set not ready for API: %s", msg)
+}
+
+func (ths *TektonHubStatus) MarkApiInstallerSetReady() {
+	hubCondSet.Manage(ths).MarkTrue(ApiInstallerSetReady)
+}
+
+func (ths *TektonHubStatus) MarkApiInstallerSetNotAvailable(msg string) {
+	ths.MarkNotReady("TektonInstallerSet not ready for API")
+	hubCondSet.Manage(ths).MarkFalse(
+		ApiInstallerSetAvaible,
+		"Error",
+		"Installer set not ready for API: %s", msg)
+}
+
+func (ths *TektonHubStatus) MarkApiInstallerSetAvailable() {
+	hubCondSet.Manage(ths).MarkTrue(ApiInstallerSetAvaible)
+}
+
+// TODO: below methods are not required for TektonAddon
+// but as extension implements TektonComponent we need to define them
+// this will be removed
+
+func (tas *TektonHubStatus) MarkInstallSucceeded() {
+	panic("MarkInstallSucceeded implement me")
+}
+
+func (ths *TektonHubStatus) MarkInstallFailed(msg string) {
+	panic("MarkInstallFailed implement me")
+}
+
+func (ths *TektonHubStatus) MarkDeploymentsAvailable() {
+	panic("MarkDeploymentsAvailable implement me")
+}
+
+func (ths *TektonHubStatus) MarkDeploymentsNotReady() {
+	panic("MarkDeploymentsNotReady implement me")
+}
+
+func (ths *TektonHubStatus) MarkDependenciesInstalled() {
+	panic("MarkDependenciesInstalled implement me")
+}
+
+func (ths *TektonHubStatus) MarkDependencyInstalling(msg string) {
+	panic("MarkDependencyInstalling implement me")
+}
+
+func (ths *TektonHubStatus) MarkDependencyMissing(msg string) {
+	panic("MarkDependencyMissing implement me")
 }

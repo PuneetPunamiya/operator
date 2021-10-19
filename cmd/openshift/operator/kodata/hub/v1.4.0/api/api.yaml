@@ -136,7 +136,7 @@ metadata:
 spec:
   to:
     kind: Service
-    name: api
+    name: tekton-hub-api
   tls:
     insecureEdgeTerminationPolicy: Redirect
     termination: edge

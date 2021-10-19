@@ -20,6 +20,7 @@ import (
 	"path/filepath"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -29,6 +30,7 @@ import (
 	tektonhubconciler "github.com/tektoncd/operator/pkg/client/injection/reconciler/operator/v1alpha1/tektonhub"
 	"github.com/tektoncd/operator/pkg/reconciler/common"
 	"k8s.io/client-go/kubernetes"
+	"knative.dev/pkg/apis"
 	"knative.dev/pkg/logging"
 	pkgreconciler "knative.dev/pkg/reconciler"
 )
@@ -56,9 +58,33 @@ var (
 	_ tektonhubconciler.Finalizer = (*Reconciler)(nil)
 )
 
+const (
+	dbInstallerSet          = "DbInstallerSet"
+	dbMigrationInstallerSet = "DbMigrationInstallerSet"
+	apiInstallerSet         = "ApiInstallerSet"
+	uiInstallerSet          = "UiInstallerSet"
+
+	releaseVersionKey  = "operator.tekton.dev/release-version"
+	createdByKey       = "operator.tekton.dev/created-by"
+	targetNamespaceKey = "operator.tekton.dev/target-namespace"
+	createdByValue     = "TektonHub"
+)
+
 // FinalizeKind removes all resources after deletion of a TektonHub.
 func (r *Reconciler) FinalizeKind(ctx context.Context, original *v1alpha1.TektonHub) pkgreconciler.Event {
 	logger := logging.FromContext(ctx)
+
+	installerSets := original.Status.HubInstallerSet
+	if len(installerSets) == 0 {
+		return nil
+	}
+
+	for _, value := range installerSets {
+		err := r.operatorClientSet.OperatorV1alpha1().TektonInstallerSets().Delete(ctx, value, metav1.DeleteOptions{})
+		if err != nil && !errors.IsNotFound(err) {
+			return err
+		}
+	}
 
 	// List all TektonHub to determine if cluster-scoped resources should be deleted.
 	tps, err := r.operatorClientSet.OperatorV1alpha1().TektonHubs().List(ctx, metav1.ListOptions{})
@@ -95,7 +121,10 @@ func (r *Reconciler) ReconcileKind(ctx context.Context, th *v1alpha1.TektonHub) 
 	th.Status.InitializeConditions()
 	th.Status.ObservedGeneration = th.Generation
 	koDataDir := os.Getenv(common.KoEnvKey)
-	hubDir := filepath.Join(koDataDir, "hub", common.TargetVersion(th))
+
+	version := common.TargetVersion(th)
+
+	hubDir := filepath.Join(koDataDir, "hub", version)
 
 	if th.GetName() != common.HubResourceName {
 		msg := fmt.Sprintf("Resource ignored, Expected Name: %s, Got Name: %s",
@@ -103,69 +132,125 @@ func (r *Reconciler) ReconcileKind(ctx context.Context, th *v1alpha1.TektonHub) 
 			th.GetName(),
 		)
 		logger.Error(msg)
-		th.GetStatus().MarkInstallFailed(msg)
+		th.Status.MarkNotReady(msg)
 		return nil
 	}
 
-	// db install
-	// check if the secrets are created
+	// DB install flow
+	// check if the db secrets are created
 	if err := r.validateDBSecretsAreCreated(ctx, th); err != nil {
+		th.Status.MarkDbDependencyMissing("db secrets are either invalid or not present")
 		return err
 	}
-	th.Status.MarkDependenciesInstalled()
+	th.Status.MarkDbDependenciesInstalled()
 
-	dbLocation := filepath.Join(hubDir, "db")
-
-	// apply db related manifests with owner reference
-	manifest, err := r.applyManifest(ctx, dbLocation, th)
+	exist, err := checkIfInstallerSetExist(ctx, r.operatorClientSet, version, th, dbInstallerSet)
 	if err != nil {
 		return err
 	}
 
-	// check whether is DB is up and running
-	if err := common.CheckDeployments(ctx, &manifest, th); err != nil {
+	if !exist {
+		dbLocation := filepath.Join(hubDir, "db")
+		err := r.applyManifest(ctx, dbLocation, th, dbInstallerSet, version, "hub-db")
+		if err != nil {
+			return err
+		}
+	}
+
+	err = r.checkComponentStatus(ctx, th, dbInstallerSet)
+	if err != nil {
+		// th.Status.MarkNotReady(err.Error())
 		return err
+	}
+
+	fmt.Println("Flow continued.....................")
+
+	// dbLocation := filepath.Join(hubDir, "db")
+
+	// // apply db related manifests with owner reference
+	// manifest, err := r.applyManifest(ctx, dbLocation, th)
+	// if err != nil {
+	// 	return err
+	// }
+
+	// // check whether is DB is up and running
+	// if err := common.CheckDeployments(ctx, &manifest, th); err != nil {
+	// 	return err
+	// }
+
+	exist, err = checkIfInstallerSetExist(ctx, r.operatorClientSet, version, th, dbMigrationInstallerSet)
+	if err != nil {
+		return err
+	}
+
+	if !exist {
+		dbMigrationLocation := filepath.Join(hubDir, "db-migration")
+		err := r.applyManifest(ctx, dbMigrationLocation, th, dbMigrationInstallerSet, version, "hub-db-migration")
+		if err != nil {
+			return err
+		}
 	}
 
 	// create DB migration
-	dbMigrationLocation := filepath.Join(hubDir, "db-migration")
-	manifest, err = r.applyManifest(ctx, dbMigrationLocation, th)
-	if err != nil {
-		return err
-	}
+	// dbMigrationLocation := filepath.Join(hubDir, "db-migration")
+	// manifest, err = r.applyManifest(ctx, dbMigrationLocation, th)
+	// if err != nil {
+	// 	return err
+	// }
 
 	// whether job succedded or not
-	if err := common.CheckJobs(ctx, &manifest, th); err != nil {
-		return err
-	}
+	// if err := common.CheckJobs(ctx, &manifest, th); err != nil {
+	// 	return err
+	// }
 
 	// create API
-	apiLocation := filepath.Join(hubDir, "api")
 
 	if err := r.validateApiSecrets(ctx, th); err != nil {
+		th.Status.MarkApiDependencyMissing("api secrets not present")
 		return err
 	}
 
-	// apply api related manifests
-	manifest, err = r.applyManifest(ctx, apiLocation, th)
+	th.Status.MarkApiDependenciesInstalled()
+
+	exist, err = checkIfInstallerSetExist(ctx, r.operatorClientSet, version, th, apiInstallerSet)
 	if err != nil {
 		return err
 	}
 
-	// check whether is DB is up and running
-	if err := common.CheckDeployments(ctx, &manifest, th); err != nil {
-		return err
+	if !exist {
+		apiLocation := filepath.Join(hubDir, "api")
+		err := r.applyManifest(ctx, apiLocation, th, apiInstallerSet, version, "hub-api")
+		if err != nil {
+			return err
+		}
 	}
+
+	// apiLocation := filepath.Join(hubDir, "api")
+
+	// apply api related manifests
+	// manifest, err = r.applyManifest(ctx, apiLocation, th)
+	// if err != nil {
+	// 	return err
+	// }
+
+	// // check whether is DB is up and running
+	// if err := common.CheckDeployments(ctx, &manifest, th); err != nil {
+	// 	return err
+	// }
 
 	if err := r.extension.PostReconcile(ctx, th); err != nil {
 		return err
 	}
+
+	th.Status.MarkInstallSucceeded()
 
 	return nil
 }
 
 func (r *Reconciler) validateApiSecrets(ctx context.Context, th *v1alpha1.TektonHub) error {
 	logger := logging.FromContext(ctx)
+
+	th.Status.MarkApiDependencyInstalling("checking for api secrets in the namespace and creating the ConfigMap")
 
 	apiSecretKeys := []string{"GH_CLIENT_ID", "GH_CLIENT_SECRET", "JWT_SIGNING_KEY", "ACCESS_JWT_EXPIRES_IN", "REFRESH_JWT_EXPIRES_IN", "GHE_URL"}
 	apiConfigMapKeys := []string{"CONFIG_FILE_URL"}
@@ -212,6 +297,8 @@ func (r *Reconciler) validateApiSecrets(ctx context.Context, th *v1alpha1.Tekton
 // TektonHubs expects secrets to be created before installing
 func (r *Reconciler) validateDBSecretsAreCreated(ctx context.Context, th *v1alpha1.TektonHub) error {
 	logger := logging.FromContext(ctx)
+
+	th.Status.MarkDbDependencyInstalling("db secrets are being added into the namespace")
 
 	dbKeys := []string{"POSTGRES_DB", "POSTGRES_USER", "POSTGRES_PASSWORD", "POSTGRES_PORT"}
 
@@ -338,13 +425,13 @@ func createSecret(name, namespace string, existingSecret *corev1.Secret) *corev1
 	return s
 }
 
-func (r *Reconciler) applyManifest(ctx context.Context, manifestLocation string, th *v1alpha1.TektonHub) (mf.Manifest, error) {
+func (r *Reconciler) applyManifest(ctx context.Context, manifestLocation string, th *v1alpha1.TektonHub, installerSetName, version, prefixName string) error {
 	manifest := r.manifest.Append()
 	ownerRef := *metav1.NewControllerRef(th, th.GroupVersionKind())
 	logger := logging.FromContext(ctx)
 
 	if err := common.AppendManifest(&manifest, manifestLocation); err != nil {
-		return manifest, err
+		return err
 	}
 	manifest, err := manifest.Transform(
 		injectOwner([]metav1.OwnerReference{ownerRef}),
@@ -352,14 +439,20 @@ func (r *Reconciler) applyManifest(ctx context.Context, manifestLocation string,
 	)
 	if err != nil {
 		logger.Error("failed to transform manifest")
-		return manifest, err
+		return err
 	}
 
 	// install the manifests
-	if err := common.Install(ctx, &manifest, th); err != nil {
-		return manifest, err
+	// if err := common.Install(ctx, &manifest, th); err != nil {
+	// 	return manifest, err
+	// }
+
+	if err := createInstallerSet(ctx, r.operatorClientSet, th, manifest,
+		version, installerSetName, prefixName); err != nil {
+		return err
 	}
-	return manifest, nil
+
+	return nil
 }
 
 func (r *Reconciler) installed(ctx context.Context, instance v1alpha1.TektonComponent) (*mf.Manifest, error) {
@@ -368,4 +461,154 @@ func (r *Reconciler) installed(ctx context.Context, instance v1alpha1.TektonComp
 	stages := common.Stages{common.AppendInstalled}
 	err := stages.Execute(ctx, &installed, instance)
 	return &installed, err
+}
+
+// checkIfInstallerSetExist checks if installer set exists for a component and return true/false based on it
+// and if installer set which already exist is of older version then it deletes and return false to create a new
+// installer set
+func checkIfInstallerSetExist(ctx context.Context, oc clientset.Interface, relVersion string,
+	th *v1alpha1.TektonHub, component string) (bool, error) {
+
+	// Check if installer set is already created
+	compInstallerSet, ok := th.Status.HubInstallerSet[component]
+	if !ok {
+		return false, nil
+	}
+
+	if compInstallerSet != "" {
+		// if already created then check which version it is
+		ctIs, err := oc.OperatorV1alpha1().TektonInstallerSets().
+			Get(ctx, compInstallerSet, metav1.GetOptions{})
+		if err != nil {
+			if errors.IsNotFound(err) {
+				return false, nil
+			}
+			return false, err
+		}
+
+		version, ok := ctIs.Annotations[releaseVersionKey]
+		if ok && version == relVersion {
+			// if installer set already exist and release version is same
+			// then ignore and move on
+			return true, nil
+		}
+
+		// release version doesn't exist or is different from expected
+		// deleted existing InstallerSet and create a new one
+
+		err = oc.OperatorV1alpha1().TektonInstallerSets().
+			Delete(ctx, compInstallerSet, metav1.DeleteOptions{})
+		if err != nil {
+			return false, err
+		}
+	}
+
+	return false, nil
+}
+
+func createInstallerSet(ctx context.Context, oc clientset.Interface, th *v1alpha1.TektonHub,
+	manifest mf.Manifest, releaseVersion, component, installerSetPrefix string) error {
+
+	is := makeInstallerSet(th, manifest, installerSetPrefix, releaseVersion)
+
+	createdIs, err := oc.OperatorV1alpha1().TektonInstallerSets().
+		Create(ctx, is, metav1.CreateOptions{})
+	if err != nil {
+		return err
+	}
+
+	if len(th.Status.HubInstallerSet) == 0 {
+		th.Status.HubInstallerSet = map[string]string{}
+	}
+
+	// Update the status of addon with created installerSet name
+	th.Status.HubInstallerSet[component] = createdIs.Name
+	th.Status.SetVersion(releaseVersion)
+
+	_, err = oc.OperatorV1alpha1().TektonHubs().
+		UpdateStatus(ctx, th, metav1.UpdateOptions{})
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func makeInstallerSet(th *v1alpha1.TektonHub, manifest mf.Manifest, prefix, releaseVersion string) *v1alpha1.TektonInstallerSet {
+	ownerRef := *metav1.NewControllerRef(th, th.GetGroupVersionKind())
+	return &v1alpha1.TektonInstallerSet{
+		ObjectMeta: metav1.ObjectMeta{
+			GenerateName: fmt.Sprintf("%s-", prefix),
+			Labels: map[string]string{
+				createdByKey: createdByValue,
+			},
+			Annotations: map[string]string{
+				releaseVersionKey:  releaseVersion,
+				targetNamespaceKey: th.Spec.TargetNamespace,
+			},
+			OwnerReferences: []metav1.OwnerReference{ownerRef},
+		},
+		Spec: v1alpha1.TektonInstallerSetSpec{
+			Manifests: manifest.Resources(),
+		},
+	}
+}
+
+func (r *Reconciler) deleteInstallerSet(ctx context.Context, th *v1alpha1.TektonHub, component string) error {
+
+	compInstallerSet, ok := th.Status.HubInstallerSet[component]
+	if !ok {
+		return nil
+	}
+
+	if compInstallerSet != "" {
+		// delete the installer set
+		err := r.operatorClientSet.OperatorV1alpha1().TektonInstallerSets().
+			Delete(ctx, th.Status.HubInstallerSet[component], metav1.DeleteOptions{})
+		if err != nil && !errors.IsNotFound(err) {
+			return err
+		}
+
+		// clear the name of installer set from TektonAddon status
+		delete(th.Status.HubInstallerSet, component)
+		_, err = r.operatorClientSet.OperatorV1alpha1().TektonHubs().
+			UpdateStatus(ctx, th, metav1.UpdateOptions{})
+		if err != nil && !errors.IsNotFound(err) {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (r *Reconciler) checkComponentStatus(ctx context.Context, th *v1alpha1.TektonHub, component string) error {
+
+	// Check if installer set is already created
+	compInstallerSet, ok := th.Status.HubInstallerSet[component]
+	if !ok {
+		return nil
+	}
+
+	if compInstallerSet != "" {
+
+		ctIs, err := r.operatorClientSet.OperatorV1alpha1().TektonInstallerSets().
+			Get(ctx, compInstallerSet, metav1.GetOptions{})
+		if err != nil {
+			if errors.IsNotFound(err) {
+				return nil
+			}
+			return err
+		}
+
+		ready := ctIs.Status.GetCondition(apis.ConditionReady)
+		if ready == nil || ready.Status == corev1.ConditionUnknown {
+			return fmt.Errorf("InstallerSet %s: waiting for installation", ctIs.Name)
+		} else if ready.Status == corev1.ConditionFalse {
+			return fmt.Errorf("InstallerSet %s: ", ready.Message)
+		}
+	}
+
+	fmt.Println("checkComponent Status nil returned")
+
+	return nil
 }

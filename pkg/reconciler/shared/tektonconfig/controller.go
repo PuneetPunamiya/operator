@@ -18,7 +18,6 @@ package tektonconfig
 
 import (
 	"context"
-	"os"
 	"regexp"
 
 	"knative.dev/pkg/kmeta"
@@ -69,10 +68,10 @@ func NewExtensibleController(generator common.ExtensionGenerator) injection.Cont
 
 		namespaceinformer.Get(ctx).Informer().AddEventHandler(controller.HandleAll(enqueueCustomName(impl, common.ConfigResourceName)))
 
-		if os.Getenv("AUTOINSTALL_COMPONENTS") == "true" {
-			// try to ensure that there is an instance of tektonConfig
-			newTektonConfig(operatorclient.Get(ctx), kubeclient.Get(ctx)).ensureInstance(ctx)
-		}
+		// if os.Getenv("AUTOINSTALL_COMPONENTS") == "true" {
+		// 	// try to ensure that there is an instance of tektonConfig
+		// 	newTektonConfig(operatorclient.Get(ctx), kubeclient.Get(ctx)).ensureInstance(ctx)
+		// }
 
 		return impl
 	}

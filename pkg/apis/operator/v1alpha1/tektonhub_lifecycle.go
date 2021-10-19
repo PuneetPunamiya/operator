@@ -23,26 +23,32 @@ import (
 
 const (
 	DbDependenciesInstalled  apis.ConditionType = "DbDependenciesInstalled"
+	DbInstallerSetAvaible    apis.ConditionType = "DbInstallSetAvailable"
+	DbInstallerSetReady      apis.ConditionType = "DbInstallSetReady"
 	ApiDependenciesInstalled apis.ConditionType = "ApiDependenciesInstalled"
+	ApiInstallerSetAvaible   apis.ConditionType = "ApiInstallSetAvailable"
+	ApiInstallerSetReady     apis.ConditionType = "ApiInstallSetReady"
 	UiDependenciesInstalled  apis.ConditionType = "UiDependenciesInstalled"
-	DbAvailable              apis.ConditionType = "DbAvailable"
-	ApiAvailable             apis.ConditionType = "ApiAvailable"
-	UiAvailable              apis.ConditionType = "UiAvailable"
+	UiInstallerSetAvaible    apis.ConditionType = "UiInstallSetAvailable"
+	UiInstallerSetReady      apis.ConditionType = "UiInstallSetReady"
 )
 
 var (
 	// TODO: Add this back after refactoring all components
 	// and updating TektonComponentStatus to have updated
 	// conditions
-	// _ TektonComponentStatus = (*TektonHubStatus)(nil)
+	_ TektonComponentStatus = (*TektonHubStatus)(nil)
 
 	hubCondSet = apis.NewLivingConditionSet(
 		DbDependenciesInstalled,
-		DbAvailable,
+		DbInstallerSetAvaible,
+		DbInstallerSetReady,
 		ApiDependenciesInstalled,
-		ApiAvailable,
+		ApiInstallerSetAvaible,
+		ApiInstallerSetReady,
 		UiDependenciesInstalled,
-		UiAvailable,
+		UiInstallerSetAvaible,
+		UiInstallerSetReady,
 		InstallSucceeded,
 		PostReconciler,
 	)
@@ -50,6 +56,10 @@ var (
 
 // GroupVersionKind returns SchemeGroupVersion of a TektonHub
 func (th *TektonHub) GroupVersionKind() schema.GroupVersionKind {
+	return SchemeGroupVersion.WithKind(KindTektonHub)
+}
+
+func (th *TektonHub) GetGroupVersionKind() schema.GroupVersionKind {
 	return SchemeGroupVersion.WithKind(KindTektonHub)
 }
 
@@ -66,6 +76,77 @@ func (ths *TektonHubStatus) InitializeConditions() {
 // IsReady looks at the conditions returns true if they are all true.
 func (ths *TektonHubStatus) IsReady() bool {
 	return hubCondSet.Manage(ths).IsHappy()
+}
+
+func (ths *TektonHubStatus) MarkNotReady(msg string) {
+	hubCondSet.Manage(ths).MarkFalse(
+		apis.ConditionReady,
+		"Error",
+		"Ready: %s", msg)
+}
+
+func (ths *TektonHubStatus) MarkDbDependencyInstalling(msg string) {
+	ths.MarkNotReady("Dependencies installing")
+	hubCondSet.Manage(ths).MarkFalse(
+		DbDependenciesInstalled,
+		"Error",
+		"Dependencies are installing for Db: %s", msg)
+}
+
+func (ths *TektonHubStatus) MarkDbDependencyMissing(msg string) {
+	ths.MarkNotReady("Missing Dependencies for DB")
+	hubCondSet.Manage(ths).MarkFalse(
+		DbDependenciesInstalled,
+		"Error",
+		"Dependencies are missing: %s", msg)
+}
+
+func (ths *TektonHubStatus) MarkDbDependenciesInstalled() {
+	hubCondSet.Manage(ths).MarkTrue(DbDependenciesInstalled)
+}
+
+// API
+
+func (ths *TektonHubStatus) MarkApiDependencyInstalling(msg string) {
+	ths.MarkNotReady("Dependencies installing")
+	hubCondSet.Manage(ths).MarkFalse(
+		ApiDependenciesInstalled,
+		"Error",
+		"Dependencies are installing for Api: %s", msg)
+}
+
+func (ths *TektonHubStatus) MarkApiDependencyMissing(msg string) {
+	ths.MarkNotReady("Missing Dependencies for API")
+	hubCondSet.Manage(ths).MarkFalse(
+		ApiDependenciesInstalled,
+		"Error",
+		"Dependencies are missing: %s", msg)
+}
+
+func (ths *TektonHubStatus) MarkApiDependenciesInstalled() {
+	hubCondSet.Manage(ths).MarkTrue(ApiDependenciesInstalled)
+}
+
+// Ui
+
+func (ths *TektonHubStatus) MarkUiDependencyInstalling(msg string) {
+	ths.MarkNotReady("Dependencies installing")
+	hubCondSet.Manage(ths).MarkFalse(
+		UiDependenciesInstalled,
+		"Error",
+		"Dependencies are installing for UI: %s", msg)
+}
+
+func (ths *TektonHubStatus) MarkUiDependencyMissing(msg string) {
+	ths.MarkNotReady("Missing Dependencies for UI")
+	hubCondSet.Manage(ths).MarkFalse(
+		UiDependenciesInstalled,
+		"Error",
+		"Dependencies are missing: %s", msg)
+}
+
+func (ths *TektonHubStatus) MarkUIDependenciesInstalled() {
+	hubCondSet.Manage(ths).MarkTrue(UiDependenciesInstalled)
 }
 
 // MarkInstallSucceeded marks the InstallationSucceeded status as true.

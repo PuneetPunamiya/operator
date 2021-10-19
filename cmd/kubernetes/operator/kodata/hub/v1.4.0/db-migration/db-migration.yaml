@@ -15,7 +15,7 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: db-migration
+  name: tekton-hub-db-migration
   namespace: tekton-pipelines
   labels:
     app: db

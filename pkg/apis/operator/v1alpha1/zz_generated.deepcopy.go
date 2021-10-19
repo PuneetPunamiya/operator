@@ -775,8 +775,8 @@ func (in *TektonHubStatus) DeepCopyInto(out *TektonHubStatus) {
 		*out = make([]string, len(*in))
 		copy(*out, *in)
 	}
-	if in.TektonInstallerSet != nil {
-		in, out := &in.TektonInstallerSet, &out.TektonInstallerSet
+	if in.HubInstallerSet != nil {
+		in, out := &in.HubInstallerSet, &out.HubInstallerSet
 		*out = make(map[string]string, len(*in))
 		for key, val := range *in {
 			(*out)[key] = val

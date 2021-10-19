@@ -30,6 +30,8 @@ import (
 var (
 	namespacePred                      = mf.ByKind("Namespace")
 	configMapPred                      = mf.ByKind("ConfigMap")
+	pvcPred                            = mf.ByKind("PersistentVolumeClaim")
+	jobPred                            = mf.ByKind("Job")
 	secretPred                         = mf.ByKind("Secret")
 	deploymentPred                     = mf.ByKind("Deployment")
 	servicePred                        = mf.ByKind("Service")
@@ -95,6 +97,8 @@ func (i *installer) EnsureNamespaceScopedResources() error {
 			roleBindingPred,
 			configMapPred,
 			secretPred,
+			pvcPred,
+			jobPred,
 			horizontalPodAutoscalerPred,
 			pipelinePred,
 			serviceMonitorPred,

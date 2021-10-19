@@ -78,7 +78,7 @@ type TektonHubStatus struct {
 
 	// The current installer set name
 	// +optional
-	TektonInstallerSet map[string]string `json:"tektonInstallerSets,omitempty"`
+	HubInstallerSet map[string]string `json:"hubInstallerSets,omitempty"`
 }
 
 // TektonResultsList contains a list of TektonResult

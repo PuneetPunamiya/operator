@@ -15,7 +15,7 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: api
+  name: tekton-hub-api
   namespace: tekton-pipelines
   labels:
     app: api
@@ -115,7 +115,7 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: api
+  name: tekton-hub-api
   namespace: tekton-pipelines
   labels:
     app: api
@@ -126,17 +126,3 @@ spec:
     - port: 8000
       targetPort: 8000
   type: NodePort
----
-apiVersion: route.openshift.io/v1
-kind: Route
-metadata:
-  name: api
-  labels:
-    app: api
-spec:
-  to:
-    kind: Service
-    name: api
-  tls:
-    insecureEdgeTerminationPolicy: Redirect
-    termination: edge

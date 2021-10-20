@@ -30,12 +30,12 @@ import (
 // CheckDeployments checks all deployments in the given manifest and updates the given
 // status with the status of the deployments.
 func CheckJobs(ctx context.Context, manifest *mf.Manifest, instance v1alpha1.TektonComponent) error {
-	status := instance.GetStatus()
+	th := instance.(*v1alpha1.TektonHub)
 	for _, u := range manifest.Filter(mf.ByKind("Job")).Resources() {
 		resource, err := manifest.Client.Get(&u)
 		if err != nil {
 			// change for Job here
-			status.MarkDeploymentsNotReady()
+			th.Status.MarkDbMigrationInstallerSetNotReady(err.Error())
 			return err
 		}
 		job := &batchv1.Job{}
@@ -43,11 +43,11 @@ func CheckJobs(ctx context.Context, manifest *mf.Manifest, instance v1alpha1.Tek
 			return err
 		}
 		if !isJobCompleted(job) {
-			status.MarkDeploymentsNotReady()
+			th.Status.MarkDbMigrationFailed()
 			return errors.New("job unsuccessful")
 		}
 	}
-	status.MarkDeploymentsAvailable()
+
 	return nil
 }
 

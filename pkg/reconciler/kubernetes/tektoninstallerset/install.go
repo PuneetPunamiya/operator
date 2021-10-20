@@ -22,9 +22,11 @@ import (
 
 	mf "github.com/manifestival/manifestival"
 	appsv1 "k8s.io/api/apps/v1"
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/kubernetes/scheme"
 )
 
 var (
@@ -172,6 +174,24 @@ func (i *installer) AllDeploymentsReady() error {
 	return nil
 }
 
+func (i *installer) IsJobCompleted() error {
+	for _, u := range i.Manifest.Filter(jobPred).Resources() {
+		resource, err := i.Manifest.Client.Get(&u)
+		if err != nil {
+			return err
+		}
+		job := &batchv1.Job{}
+		if err := scheme.Scheme.Convert(resource, job, nil); err != nil {
+			return err
+		}
+		if !isJobCompleted(job) {
+			return fmt.Errorf("Job not successful")
+		}
+	}
+
+	return nil
+}
+
 func (i *installer) isDeploymentReady(d *unstructured.Unstructured) error {
 
 	resource, err := i.Manifest.Client.Get(d)
@@ -195,6 +215,15 @@ func (i *installer) isDeploymentReady(d *unstructured.Unstructured) error {
 func isDeploymentAvailable(d *appsv1.Deployment) bool {
 	for _, c := range d.Status.Conditions {
 		if c.Type == appsv1.DeploymentAvailable && c.Status == corev1.ConditionTrue {
+			return true
+		}
+	}
+	return false
+}
+
+func isJobCompleted(d *batchv1.Job) bool {
+	for _, c := range d.Status.Conditions {
+		if c.Type == batchv1.JobComplete && c.Status == corev1.ConditionTrue {
 			return true
 		}
 	}

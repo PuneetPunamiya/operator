@@ -22,15 +22,19 @@ import (
 )
 
 const (
-	DbDependenciesInstalled  apis.ConditionType = "DbDependenciesInstalled"
-	DbInstallerSetAvaible    apis.ConditionType = "DbInstallSetAvailable"
-	DbInstallerSetReady      apis.ConditionType = "DbInstallSetReady"
+	// DB
+	DbDependenciesInstalled apis.ConditionType = "DbDependenciesInstalled"
+	DbInstallerSetAvailable apis.ConditionType = "DbInstallSetAvailable"
+	DbInstallerSetReady     apis.ConditionType = "DbInstallSetReady"
+	// DB-migration
+	DbMigrationDependenciesInstalled apis.ConditionType = "DbMigrationDependenciesInstalled"
+	DbMigrationInstallerSetAvailable apis.ConditionType = "DbMigrationInstallSetAvailable"
+	DbMigrationInstallerSetReady     apis.ConditionType = "DbMigrationInstallSetReady"
+	DbMigrationFailed                apis.ConditionType = "DbMigrationFailed"
+	// API
 	ApiDependenciesInstalled apis.ConditionType = "ApiDependenciesInstalled"
-	ApiInstallerSetAvaible   apis.ConditionType = "ApiInstallSetAvailable"
+	ApiInstallerSetAvailable apis.ConditionType = "ApiInstallSetAvailable"
 	ApiInstallerSetReady     apis.ConditionType = "ApiInstallSetReady"
-	// UiDependenciesInstalled  apis.ConditionType = "UiDependenciesInstalled"
-	// UiInstallerSetAvaible    apis.ConditionType = "UiInstallSetAvailable"
-	// UiInstallerSetReady      apis.ConditionType = "UiInstallSetReady"
 )
 
 var (
@@ -41,15 +45,11 @@ var (
 
 	hubCondSet = apis.NewLivingConditionSet(
 		DbDependenciesInstalled,
-		DbInstallerSetAvaible,
-		// DbInstallerSetReady,
+		DbInstallerSetAvailable,
+		DbMigrationDependenciesInstalled,
+		DbMigrationInstallerSetAvailable,
 		ApiDependenciesInstalled,
-		ApiInstallerSetAvaible,
-		// ApiInstallerSetReady,
-		// UiDependenciesInstalled,
-		// UiInstallerSetAvaible,
-		// UiInstallerSetReady,
-		// InstallSucceeded,
+		ApiInstallerSetAvailable,
 		PostReconciler,
 	)
 )
@@ -169,6 +169,7 @@ func (ths *TektonHubStatus) SetApiRoute(routeUrl string) {
 	ths.ApiRouteUrl = routeUrl
 }
 
+// DB
 func (ths *TektonHubStatus) MarkDbInstallerSetNotReady(msg string) {
 	ths.MarkNotReady("TektonInstallerSet not ready for DB")
 	hubCondSet.Manage(ths).MarkFalse(
@@ -184,17 +185,49 @@ func (ths *TektonHubStatus) MarkDbInstallerSetReady() {
 func (ths *TektonHubStatus) MarkDbInstallerSetNotAvailable(msg string) {
 	ths.MarkNotReady("TektonInstallerSet not ready for DB")
 	hubCondSet.Manage(ths).MarkFalse(
-		DbInstallerSetAvaible,
+		DbInstallerSetAvailable,
 		"Error",
 		"Installer set not ready: %s", msg)
 }
 
 func (ths *TektonHubStatus) MarkDbInstallerSetAvailable() {
-	hubCondSet.Manage(ths).MarkTrue(DbInstallerSetAvaible)
+	hubCondSet.Manage(ths).MarkTrue(DbInstallerSetAvailable)
+}
+
+// DB-Migration
+func (ths *TektonHubStatus) MarkDbMigrationInstallerSetNotReady(msg string) {
+	ths.MarkNotReady("TektonInstallerSet not ready for DB")
+	hubCondSet.Manage(ths).MarkFalse(
+		DbMigrationInstallerSetReady,
+		"Error",
+		"Installer set not ready: %s", msg)
+}
+
+func (ths *TektonHubStatus) MarkDbMigrationInstallerSetReady() {
+	hubCondSet.Manage(ths).MarkTrue(DbMigrationInstallerSetReady)
+}
+
+func (ths *TektonHubStatus) MarkDbMigrationInstallerSetNotAvailable(msg string) {
+	ths.MarkNotReady("TektonInstallerSet not ready for DB")
+	hubCondSet.Manage(ths).MarkFalse(
+		DbMigrationInstallerSetAvailable,
+		"Error",
+		"Installer set not ready: %s", msg)
+}
+
+func (ths *TektonHubStatus) MarkDbMigrationInstallerSetAvailable() {
+	hubCondSet.Manage(ths).MarkTrue(DbMigrationInstallerSetAvailable)
+}
+
+func (ths *TektonHubStatus) MarkDbMigrationFailed() {
+	ths.MarkNotReady("Tekton Hub DB migration failed")
+	hubCondSet.Manage(ths).MarkFalse(
+		DbMigrationFailed,
+		"Error",
+		"DB migration failed: %s")
 }
 
 // for API
-
 func (ths *TektonHubStatus) MarkApiInstallerSetNotReady(msg string) {
 	ths.MarkNotReady("TektonInstallerSet not ready for API")
 	hubCondSet.Manage(ths).MarkFalse(
@@ -210,13 +243,13 @@ func (ths *TektonHubStatus) MarkApiInstallerSetReady() {
 func (ths *TektonHubStatus) MarkApiInstallerSetNotAvailable(msg string) {
 	ths.MarkNotReady("TektonInstallerSet not ready for API")
 	hubCondSet.Manage(ths).MarkFalse(
-		ApiInstallerSetAvaible,
+		ApiInstallerSetAvailable,
 		"Error",
 		"Installer set not ready for API: %s", msg)
 }
 
 func (ths *TektonHubStatus) MarkApiInstallerSetAvailable() {
-	hubCondSet.Manage(ths).MarkTrue(ApiInstallerSetAvaible)
+	hubCondSet.Manage(ths).MarkTrue(ApiInstallerSetAvailable)
 }
 
 // TODO: below methods are not required for TektonAddon

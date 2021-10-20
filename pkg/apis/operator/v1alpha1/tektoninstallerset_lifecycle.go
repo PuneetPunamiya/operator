@@ -29,6 +29,7 @@ const (
 	WebhookReady         apis.ConditionType = "WebhooksReady"
 	ControllerReady      apis.ConditionType = "ControllersReady"
 	AllDeploymentsReady  apis.ConditionType = "AllDeploymentsReady"
+	JobCompleted         apis.ConditionType = "JobCompleted"
 )
 
 var (
@@ -40,6 +41,7 @@ var (
 		WebhookReady,
 		ControllerReady,
 		AllDeploymentsReady,
+		JobCompleted,
 	)
 )
 
@@ -89,6 +91,10 @@ func (tis *TektonInstallerSetStatus) MarkControllerReady() {
 
 func (tis *TektonInstallerSetStatus) MarkAllDeploymentsReady() {
 	installerSetCondSet.Manage(tis).MarkTrue(AllDeploymentsReady)
+}
+
+func (tis *TektonInstallerSetStatus) MarkJobCompleted() {
+	installerSetCondSet.Manage(tis).MarkTrue(JobCompleted)
 }
 
 func (tis *TektonInstallerSetStatus) MarkNotReady(msg string) {
@@ -152,4 +158,12 @@ func (tis *TektonInstallerSetStatus) MarkAllDeploymentsNotReady(msg string) {
 		AllDeploymentsReady,
 		"Error",
 		"Deployment: %s", msg)
+}
+
+func (tis *TektonInstallerSetStatus) MarkJobFailed(msg string) {
+	tis.MarkNotReady("Job failed")
+	installerSetCondSet.Manage(tis).MarkFalse(
+		JobCompleted,
+		"Error",
+		"Job: %s", msg)
 }

@@ -176,5 +176,14 @@ func (r *Reconciler) ReconcileKind(ctx context.Context, installerSet *v1alpha1.T
 	// Mark all deployments ready
 	installerSet.Status.MarkAllDeploymentsReady()
 
+	// job
+	err = installer.IsJobCompleted()
+	if err != nil {
+		installerSet.Status.MarkJobFailed(err.Error())
+		return err
+	}
+
+	installerSet.Status.MarkJobCompleted()
+
 	return nil
 }

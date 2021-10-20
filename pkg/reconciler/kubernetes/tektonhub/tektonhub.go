@@ -181,17 +181,6 @@ func (r *Reconciler) ReconcileKind(ctx context.Context, th *v1alpha1.TektonHub) 
 		}
 	}
 
-	// dbMigrationManifest := r.manifest.Append()
-	// if err := common.AppendManifest(&dbMigrationManifest, dbMigrationLocation); err != nil {
-	// 	th.Status.MarkDbMigrationInstallerSetNotAvailable(err.Error())
-	// 	return err
-	// }
-	// whether job succedded or not
-	// if err := common.CheckJobs(ctx, &dbMigrationManifest, th); err != nil {
-	// 	th.Status.MarkDbMigrationInstallerSetNotAvailable(err.Error())
-	// 	return err
-	// }
-
 	err = r.checkComponentStatus(ctx, th, dbMigrationInstallerSet)
 	if err != nil {
 		th.Status.MarkDbMigrationInstallerSetNotAvailable(err.Error())

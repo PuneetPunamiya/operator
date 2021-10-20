@@ -36,11 +36,11 @@ import (
 // NewController initializes the controller and is called by the generated code
 // Registers eventhandlers to enqueue events
 func NewController(ctx context.Context, cmw configmap.Watcher) *controller.Impl {
-	return NewExtendedController(common.NoExtension)(ctx, cmw)
+	return NewExtendedController(common.NoExtension, "tekton-pipelines")(ctx, cmw)
 }
 
 // NewExtendedController returns a controller extended to a specific platform
-func NewExtendedController(generator common.ExtensionGenerator) injection.ControllerConstructor {
+func NewExtendedController(generator common.ExtensionGenerator, namespace string) injection.ControllerConstructor {
 	return func(ctx context.Context, cmw configmap.Watcher) *controller.Impl {
 		tektonHubInformer := tektonHubinformer.Get(ctx)
 		kubeClient := kubeclient.Get(ctx)
@@ -61,6 +61,7 @@ func NewExtendedController(generator common.ExtensionGenerator) injection.Contro
 			operatorClientSet: operatorclient.Get(ctx),
 			extension:         generator(ctx),
 			manifest:          manifest,
+			namespace:         namespace,
 		}
 		impl := tektonHubReconciler.NewImpl(ctx, c)
 

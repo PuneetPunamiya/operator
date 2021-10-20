@@ -11,5 +11,5 @@ import (
 // NewController initializes the controller and is called by the generated code
 // Registers eventhandlers to enqueue events
 func NewController(ctx context.Context, cmw configmap.Watcher) *controller.Impl {
-	return k8s_ctrl.NewExtendedController(OpenShiftExtension)(ctx, cmw)
+	return k8s_ctrl.NewExtendedController(OpenShiftExtension, "openshift-pipelines")(ctx, cmw)
 }

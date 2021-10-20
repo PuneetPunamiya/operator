@@ -52,6 +52,7 @@ type Reconciler struct {
 
 	// enqueueAfter enqueues a obj after a duration
 	enqueueAfter func(obj interface{}, after time.Duration)
+	namespace    string
 }
 
 var (
@@ -243,7 +244,7 @@ func (r *Reconciler) validateApiSecrets(ctx context.Context, th *v1alpha1.Tekton
 	apiSecretKeys := []string{"GH_CLIENT_ID", "GH_CLIENT_SECRET", "JWT_SIGNING_KEY", "ACCESS_JWT_EXPIRES_IN", "REFRESH_JWT_EXPIRES_IN", "GHE_URL"}
 	apiConfigMapKeys := []string{"CONFIG_FILE_URL"}
 
-	_, err := r.getSecretForHub(ctx, th.Spec.Api.ApiSecretName, th.Spec.TargetNamespace, apiSecretKeys)
+	_, err := r.getSecretForHub(ctx, th.Spec.Api.ApiSecretName, r.namespace, apiSecretKeys)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			th.Status.MarkApiDependencyMissing(fmt.Sprintf("%s secret is missing", th.Spec.Api.ApiSecretName))
@@ -258,11 +259,11 @@ func (r *Reconciler) validateApiSecrets(ctx context.Context, th *v1alpha1.Tekton
 		}
 	}
 
-	_, err = r.getConfigMapForHub(ctx, apiConfigMapName, th.Spec.TargetNamespace, apiConfigMapKeys)
+	_, err = r.getConfigMapForHub(ctx, apiConfigMapName, r.namespace, apiConfigMapKeys)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
-			configMap := createConfigMap(apiConfigMapName, th)
-			_, err = r.kubeClientSet.CoreV1().ConfigMaps(th.Spec.TargetNamespace).Create(ctx, configMap, metav1.CreateOptions{})
+			configMap := createConfigMap(apiConfigMapName, r.namespace, th)
+			_, err = r.kubeClientSet.CoreV1().ConfigMaps(r.namespace).Create(ctx, configMap, metav1.CreateOptions{})
 			if err != nil {
 				logger.Error(err)
 				th.Status.MarkApiDependencyMissing(fmt.Sprintf("%s configMap is missing", apiConfigMapName))
@@ -290,12 +291,12 @@ func (r *Reconciler) validateDBSecretsAreCreated(ctx context.Context, th *v1alph
 
 	dbKeys := []string{"POSTGRES_DB", "POSTGRES_USER", "POSTGRES_PASSWORD", "POSTGRES_PORT"}
 
-	dbSecret, err := r.getSecretForHub(ctx, th.Spec.Db.DbSecretName, th.Spec.TargetNamespace, dbKeys)
+	dbSecret, err := r.getSecretForHub(ctx, th.Spec.Db.DbSecretName, r.namespace, dbKeys)
 	if err != nil {
 		fmt.Println("DBSecret------->", dbSecret)
-		newDbSecret := createSecret(th.Spec.Db.DbSecretName, th.Spec.TargetNamespace, dbSecret)
+		newDbSecret := createSecret(th.Spec.Db.DbSecretName, r.namespace, dbSecret)
 		if apierrors.IsNotFound(err) {
-			_, err = r.kubeClientSet.CoreV1().Secrets(th.Spec.TargetNamespace).Create(ctx, newDbSecret, metav1.CreateOptions{})
+			_, err = r.kubeClientSet.CoreV1().Secrets(r.namespace).Create(ctx, newDbSecret, metav1.CreateOptions{})
 			if err != nil {
 				logger.Error(err)
 				th.Status.MarkDbDependencyMissing(fmt.Sprintf("%s secret is missing", th.Spec.Db.DbSecretName))
@@ -304,7 +305,7 @@ func (r *Reconciler) validateDBSecretsAreCreated(ctx context.Context, th *v1alph
 			return nil
 		}
 		if err == keyMissing {
-			_, err = r.kubeClientSet.CoreV1().Secrets(th.Spec.TargetNamespace).Update(ctx, newDbSecret, metav1.UpdateOptions{})
+			_, err = r.kubeClientSet.CoreV1().Secrets(r.namespace).Update(ctx, newDbSecret, metav1.UpdateOptions{})
 			if err != nil {
 				logger.Error(err)
 				th.Status.MarkDbDependencyMissing(fmt.Sprintf("%s secret is missing", th.Spec.Db.DbSecretName))
@@ -361,11 +362,11 @@ func (r *Reconciler) getConfigMapForHub(ctx context.Context, name, targetNs stri
 	return configMap, nil
 }
 
-func createConfigMap(name string, th *v1alpha1.TektonHub) *corev1.ConfigMap {
+func createConfigMap(name, namespace string, th *v1alpha1.TektonHub) *corev1.ConfigMap {
 	return &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
-			Namespace: th.Spec.TargetNamespace,
+			Namespace: namespace,
 			Labels: map[string]string{
 				"app": "api",
 			},
@@ -423,7 +424,7 @@ func (r *Reconciler) applyManifest(ctx context.Context, manifestLocation string,
 	}
 	manifest, err := manifest.Transform(
 		injectOwner([]metav1.OwnerReference{ownerRef}),
-		changeNamespace(th.Spec.TargetNamespace),
+		changeNamespace(r.namespace),
 	)
 	if err != nil {
 		logger.Error("failed to transform manifest")
@@ -431,7 +432,7 @@ func (r *Reconciler) applyManifest(ctx context.Context, manifestLocation string,
 	}
 
 	if err := createInstallerSet(ctx, r.operatorClientSet, th, manifest,
-		version, installerSetName, prefixName); err != nil {
+		version, installerSetName, prefixName, r.namespace); err != nil {
 		return err
 	}
 
@@ -490,9 +491,9 @@ func checkIfInstallerSetExist(ctx context.Context, oc clientset.Interface, relVe
 }
 
 func createInstallerSet(ctx context.Context, oc clientset.Interface, th *v1alpha1.TektonHub,
-	manifest mf.Manifest, releaseVersion, component, installerSetPrefix string) error {
+	manifest mf.Manifest, releaseVersion, component, installerSetPrefix, namespace string) error {
 
-	is := makeInstallerSet(th, manifest, installerSetPrefix, releaseVersion)
+	is := makeInstallerSet(th, manifest, installerSetPrefix, releaseVersion, namespace)
 
 	createdIs, err := oc.OperatorV1alpha1().TektonInstallerSets().
 		Create(ctx, is, metav1.CreateOptions{})
@@ -517,7 +518,7 @@ func createInstallerSet(ctx context.Context, oc clientset.Interface, th *v1alpha
 	return nil
 }
 
-func makeInstallerSet(th *v1alpha1.TektonHub, manifest mf.Manifest, prefix, releaseVersion string) *v1alpha1.TektonInstallerSet {
+func makeInstallerSet(th *v1alpha1.TektonHub, manifest mf.Manifest, prefix, releaseVersion, namespace string) *v1alpha1.TektonInstallerSet {
 	ownerRef := *metav1.NewControllerRef(th, th.GetGroupVersionKind())
 	return &v1alpha1.TektonInstallerSet{
 		ObjectMeta: metav1.ObjectMeta{
@@ -527,7 +528,7 @@ func makeInstallerSet(th *v1alpha1.TektonHub, manifest mf.Manifest, prefix, rele
 			},
 			Annotations: map[string]string{
 				releaseVersionKey:  releaseVersion,
-				targetNamespaceKey: th.Spec.TargetNamespace,
+				targetNamespaceKey: namespace,
 			},
 			OwnerReferences: []metav1.OwnerReference{ownerRef},
 		},

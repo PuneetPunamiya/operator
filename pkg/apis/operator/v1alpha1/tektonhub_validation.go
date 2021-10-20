@@ -29,10 +29,6 @@ func (tp *TektonHub) Validate(ctx context.Context) (errs *apis.FieldError) {
 		return nil
 	}
 
-	if tp.Spec.TargetNamespace == "" {
-		errs = errs.Also(apis.ErrMissingField("spec.targetNamespace"))
-	}
-
 	return errs.Also(tp.Spec.Api.validate("spec.api"), tp.Spec.Db.validate("spec.db"))
 }
 

@@ -51,15 +51,9 @@ func OpenShiftExtension(ctx context.Context) common.Extension {
 		logger.Fatalw("error creating initial manifest", zap.Error(err))
 	}
 
-	// version := os.Getenv(versionKey)
-	// if version == "" {
-	// 	logger.Fatal("Failed to find version from env")
-	// }
-
 	ext := openshiftExtension{
 		operatorClientSet: operatorclient.Get(ctx),
 		manifest:          manifest,
-		// version:           version,
 	}
 	return ext
 }
@@ -91,7 +85,7 @@ func (oe openshiftExtension) PostReconcile(ctx context.Context, tc v1alpha1.Tekt
 	}
 	manifest, err := manifest.Transform(
 		injectOwner([]metav1.OwnerReference{ownerRef}),
-		changeNamespace(th.Spec.TargetNamespace),
+		changeNamespace("openshift-pipelines"),
 	)
 	if err != nil {
 		logger.Error("failed to transform manifest")

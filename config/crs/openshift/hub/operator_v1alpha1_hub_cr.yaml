@@ -17,7 +17,6 @@ kind: TektonHub
 metadata:
   name: hub
 spec:
-  targetNamespace: openshift-pipelines
   db:
     secret: db
   api:

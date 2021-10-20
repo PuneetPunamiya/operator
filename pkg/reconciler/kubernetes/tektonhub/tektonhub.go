@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -48,6 +49,9 @@ type Reconciler struct {
 	manifest mf.Manifest
 	// Platform-specific behavior to affect the transform
 	extension common.Extension
+
+	// enqueueAfter enqueues a obj after a duration
+	enqueueAfter func(obj interface{}, after time.Duration)
 }
 
 var (
@@ -161,6 +165,7 @@ func (r *Reconciler) ReconcileKind(ctx context.Context, th *v1alpha1.TektonHub) 
 	err = r.checkComponentStatus(ctx, th, dbInstallerSet)
 	if err != nil {
 		th.Status.MarkDbInstallerSetNotAvailable(err.Error())
+		r.enqueueAfter(th, 10*time.Second)
 		return err
 	}
 
@@ -184,6 +189,7 @@ func (r *Reconciler) ReconcileKind(ctx context.Context, th *v1alpha1.TektonHub) 
 	err = r.checkComponentStatus(ctx, th, dbMigrationInstallerSet)
 	if err != nil {
 		th.Status.MarkDbMigrationInstallerSetNotAvailable(err.Error())
+		r.enqueueAfter(th, 10*time.Second)
 		return err
 	}
 
@@ -214,6 +220,7 @@ func (r *Reconciler) ReconcileKind(ctx context.Context, th *v1alpha1.TektonHub) 
 	err = r.checkComponentStatus(ctx, th, apiInstallerSet)
 	if err != nil {
 		th.Status.MarkApiInstallerSetNotAvailable(err.Error())
+		r.enqueueAfter(th, 10*time.Second)
 		return err
 	}
 

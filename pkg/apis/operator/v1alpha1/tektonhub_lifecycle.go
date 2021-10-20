@@ -27,7 +27,6 @@ const (
 	DbInstallerSetAvailable apis.ConditionType = "DbInstallSetAvailable"
 	DbInstallerSetReady     apis.ConditionType = "DbInstallSetReady"
 	// DB-migration
-	DbMigrationDependenciesInstalled apis.ConditionType = "DbMigrationDependenciesInstalled"
 	DbMigrationInstallerSetAvailable apis.ConditionType = "DbMigrationInstallSetAvailable"
 	DbMigrationInstallerSetReady     apis.ConditionType = "DbMigrationInstallSetReady"
 	DbMigrationFailed                apis.ConditionType = "DbMigrationFailed"
@@ -46,7 +45,6 @@ var (
 	hubCondSet = apis.NewLivingConditionSet(
 		DbDependenciesInstalled,
 		DbInstallerSetAvailable,
-		DbMigrationDependenciesInstalled,
 		DbMigrationInstallerSetAvailable,
 		ApiDependenciesInstalled,
 		ApiInstallerSetAvailable,

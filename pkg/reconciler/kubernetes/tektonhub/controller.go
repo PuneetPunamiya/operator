@@ -64,6 +64,9 @@ func NewExtendedController(generator common.ExtensionGenerator) injection.Contro
 		}
 		impl := tektonHubReconciler.NewImpl(ctx, c)
 
+		// Add enqueue func in reconciler
+		c.enqueueAfter = impl.EnqueueAfter
+
 		logger.Info("Setting up event handlers")
 
 		tektonHubInformer.Informer().AddEventHandler(controller.HandleAll(impl.Enqueue))

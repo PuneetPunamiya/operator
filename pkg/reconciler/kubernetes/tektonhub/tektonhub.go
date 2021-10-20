@@ -172,8 +172,8 @@ func (r *Reconciler) ReconcileKind(ctx context.Context, th *v1alpha1.TektonHub) 
 		return err
 	}
 
-	dbMigrationLocation := filepath.Join(hubDir, "db-migration")
 	if !exist {
+		dbMigrationLocation := filepath.Join(hubDir, "db-migration")
 		th.Status.MarkDbMigrationInstallerSetNotAvailable("DB migration installerset not available")
 		err := r.applyManifest(ctx, dbMigrationLocation, th, dbMigrationInstallerSet, version, "hub-db-migration")
 		if err != nil {
@@ -181,22 +181,22 @@ func (r *Reconciler) ReconcileKind(ctx context.Context, th *v1alpha1.TektonHub) 
 		}
 	}
 
-	dbMigrationManifest := r.manifest.Append()
-	if err := common.AppendManifest(&dbMigrationManifest, dbMigrationLocation); err != nil {
-		th.Status.MarkDbMigrationInstallerSetNotAvailable(err.Error())
-		return err
-	}
-	// whether job succedded or not
-	if err := common.CheckJobs(ctx, &dbMigrationManifest, th); err != nil {
-		th.Status.MarkDbMigrationInstallerSetNotAvailable(err.Error())
-		return err
-	}
-
-	// err = r.checkComponentStatus(ctx, th, dbMigrationInstallerSet)
-	// if err != nil {
+	// dbMigrationManifest := r.manifest.Append()
+	// if err := common.AppendManifest(&dbMigrationManifest, dbMigrationLocation); err != nil {
 	// 	th.Status.MarkDbMigrationInstallerSetNotAvailable(err.Error())
 	// 	return err
 	// }
+	// whether job succedded or not
+	// if err := common.CheckJobs(ctx, &dbMigrationManifest, th); err != nil {
+	// 	th.Status.MarkDbMigrationInstallerSetNotAvailable(err.Error())
+	// 	return err
+	// }
+
+	err = r.checkComponentStatus(ctx, th, dbMigrationInstallerSet)
+	if err != nil {
+		th.Status.MarkDbMigrationInstallerSetNotAvailable(err.Error())
+		return err
+	}
 
 	th.Status.MarkDbMigrationInstallerSetAvailable()
 

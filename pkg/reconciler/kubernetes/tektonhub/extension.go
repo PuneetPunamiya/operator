@@ -18,28 +18,27 @@ package tektonhub
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	v1 "k8s.io/api/networking/v1"
 
 	"github.com/go-logr/zapr"
 	mfc "github.com/manifestival/client-go-client"
 	mf "github.com/manifestival/manifestival"
-	routev1 "github.com/openshift/api/route/v1"
-	"github.com/openshift/client-go/route/clientset/versioned/scheme"
 	"github.com/tektoncd/operator/pkg/apis/operator/v1alpha1"
 	"github.com/tektoncd/operator/pkg/client/clientset/versioned"
 	operatorclient "github.com/tektoncd/operator/pkg/client/injection/client"
 	"github.com/tektoncd/operator/pkg/reconciler/common"
 	"go.uber.org/zap"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes/scheme"
 	"knative.dev/pkg/injection"
 	"knative.dev/pkg/logging"
 )
 
-func OpenShiftExtension(ctx context.Context) common.Extension {
+func KubernetesExtension(ctx context.Context) common.Extension {
 	logger := logging.FromContext(ctx)
 	mfclient, err := mfc.NewClient(injection.GetConfig(ctx))
 	if err != nil {
@@ -51,25 +50,25 @@ func OpenShiftExtension(ctx context.Context) common.Extension {
 		logger.Fatalw("error creating initial manifest", zap.Error(err))
 	}
 
-	ext := openshiftExtension{
+	ext := kubernetesExtension{
 		operatorClientSet: operatorclient.Get(ctx),
 		manifest:          manifest,
 	}
 	return ext
 }
 
-type openshiftExtension struct {
+type kubernetesExtension struct {
 	operatorClientSet versioned.Interface
 	manifest          mf.Manifest
 }
 
-func (oe openshiftExtension) Transformers(comp v1alpha1.TektonComponent) []mf.Transformer {
+func (oe kubernetesExtension) Transformers(comp v1alpha1.TektonComponent) []mf.Transformer {
 	return nil
 }
-func (oe openshiftExtension) PreReconcile(ctx context.Context, tc v1alpha1.TektonComponent) error {
+func (ke kubernetesExtension) PreReconcile(ctx context.Context, tc v1alpha1.TektonComponent) error {
 	return nil
 }
-func (oe openshiftExtension) PostReconcile(ctx context.Context, tc v1alpha1.TektonComponent) error {
+func (ke kubernetesExtension) PostReconcile(ctx context.Context, tc v1alpha1.TektonComponent) error {
 
 	th := tc.(*v1alpha1.TektonHub)
 	logger := logging.FromContext(ctx)
@@ -77,22 +76,22 @@ func (oe openshiftExtension) PostReconcile(ctx context.Context, tc v1alpha1.Tekt
 	koDataDir := os.Getenv(common.KoEnvKey)
 	hubDir := filepath.Join(koDataDir, "hub", common.TargetVersion(th), "api")
 
-	manifest := oe.manifest.Append()
+	manifest := ke.manifest.Append()
 
 	ownerRef := *metav1.NewControllerRef(th, th.GroupVersionKind())
 	if err := common.AppendManifest(&manifest, hubDir); err != nil {
 		return err
 	}
-	manifest, err := manifest.Transform(
+	manifest, err := manifest.Filter(mf.ByKind("Ingress")).Transform(
 		injectOwner([]metav1.OwnerReference{ownerRef}),
-		changeNamespace("openshift-pipelines"),
+		changeNamespace("tekton-pipelines"),
 	)
 	if err != nil {
 		logger.Error("failed to transform manifest")
 		return err
 	}
 
-	if err := manifest.Filter(mf.ByKind("Route")).Apply(); err != nil {
+	if err := manifest.Filter(mf.ByKind("Ingress")).Apply(); err != nil {
 		return err
 	}
 
@@ -105,44 +104,30 @@ func (oe openshiftExtension) PostReconcile(ctx context.Context, tc v1alpha1.Tekt
 
 	return nil
 }
-func (oe openshiftExtension) Finalize(context.Context, v1alpha1.TektonComponent) error {
+func (ke kubernetesExtension) Finalize(context.Context, v1alpha1.TektonComponent) error {
 	return nil
-}
-
-func injectOwner(owner []v1.OwnerReference) mf.Transformer {
-	return func(u *unstructured.Unstructured) error {
-		kind := u.GetKind()
-		if kind == "CustomResourceDefinition" {
-			return nil
-		}
-		u.SetOwnerReferences(owner)
-		return nil
-	}
-}
-
-func changeNamespace(targetNamespace string) mf.Transformer {
-	return func(u *unstructured.Unstructured) error {
-		if u.GetNamespace() != targetNamespace {
-			u.SetNamespace(targetNamespace)
-			return nil
-		}
-		return nil
-	}
 }
 
 func getRouteHost(manifest *mf.Manifest) (string, error) {
 	var hostUrl string
-	for _, r := range manifest.Filter(mf.ByKind("Route")).Resources() {
+	for _, r := range manifest.Filter(mf.ByKind("Ingress")).Resources() {
 		u, err := manifest.Client.Get(&r)
 		if err != nil {
 			return "", err
 		}
-		if u.GetName() == "api" {
-			route := &routev1.Route{}
+		if u.GetName() == "tekton-hub-api" {
+			route := &v1.Ingress{}
 			if err := scheme.Scheme.Convert(u, route, nil); err != nil {
 				return "", err
 			}
-			hostUrl = route.Spec.Host
+			rules := route.Spec.Rules
+			for i, rule := range rules {
+				if i == len(rules)-1 {
+					hostUrl += fmt.Sprintf("http://%s", rule.Host)
+				} else {
+					hostUrl += fmt.Sprintf("http://%s,", rule.Host)
+				}
+			}
 		}
 	}
 	return hostUrl, nil

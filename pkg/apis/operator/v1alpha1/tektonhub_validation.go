@@ -29,7 +29,7 @@ func (tp *TektonHub) Validate(ctx context.Context) (errs *apis.FieldError) {
 		return nil
 	}
 
-	return errs.Also(tp.Spec.Api.validate("spec.api"), tp.Spec.Db.validate("spec.db"))
+	return errs.Also(tp.Spec.Api.validate("spec.api"))
 }
 
 func (api *ApiSpec) validate(path string) (errs *apis.FieldError) {
@@ -42,20 +42,11 @@ func (api *ApiSpec) validate(path string) (errs *apis.FieldError) {
 	}
 
 	if api.HubConfigUrl == "" {
-		errs = errs.Also(apis.ErrInvalidValue(api.HubConfigUrl, path+".HubConfigUrl"))
+		errs = errs.Also(apis.ErrMissingField(path + ".HubConfigUrl"))
 	}
 
 	if api.ApiSecretName == "" {
-		errs = errs.Also(apis.ErrInvalidValue(api.ApiSecretName, path+".ApiSecretName"))
-	}
-
-	return errs
-}
-
-func (db *DbSpec) validate(path string) (errs *apis.FieldError) {
-
-	if db.DbSecretName == "" {
-		errs = errs.Also(apis.ErrInvalidValue(db.DbSecretName, path+".DbSecretName"))
+		errs = errs.Also(apis.ErrMissingField(path + ".ApiSecretName"))
 	}
 
 	return errs

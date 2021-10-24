@@ -18,11 +18,26 @@ package v1alpha1
 
 import (
 	"context"
+	"testing"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-func (tc *TektonHub) SetDefaults(ctx context.Context) {
+func TestSetDefault(t *testing.T) {
 
-	if tc.Spec.Db.DbSecretName == "" {
-		tc.Spec.Db.DbSecretName = "db"
+	th := &TektonHub{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "hub",
+		},
+		Spec: TektonHubSpec{
+			Api: ApiSpec{
+				HubConfigUrl:  "https://hubconfig.url",
+				ApiSecretName: "api",
+			},
+		},
+	}
+	th.SetDefaults(context.TODO())
+	if th.Spec.Db.DbSecretName != "db" {
+		t.Error("Setting default failed for TektonHub (spec.db.dbSecretName)")
 	}
 }

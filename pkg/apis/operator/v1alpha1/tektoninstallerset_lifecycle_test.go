@@ -46,6 +46,7 @@ func TestTektonInstallerSetHappyPath(t *testing.T) {
 	apistest.CheckConditionOngoing(tis, WebhookReady, t)
 	apistest.CheckConditionOngoing(tis, ControllerReady, t)
 	apistest.CheckConditionOngoing(tis, AllDeploymentsReady, t)
+	apistest.CheckConditionOngoing(tis, JobCompleted, t)
 
 	// Install succeeds.
 	tis.MarkCRDsInstalled()
@@ -73,6 +74,9 @@ func TestTektonInstallerSetHappyPath(t *testing.T) {
 	tis.MarkAllDeploymentsReady()
 	apistest.CheckConditionSucceeded(tis, AllDeploymentsReady, t)
 
+	tis.MarkJobCompleted()
+	apistest.CheckConditionSucceeded(tis, JobCompleted, t)
+
 	if ready := tis.IsReady(); !ready {
 		t.Errorf("tt.IsReady() = %v, want true", ready)
 	}
@@ -89,6 +93,7 @@ func TestTektonInstallerSetErrorPath(t *testing.T) {
 	apistest.CheckConditionOngoing(tis, WebhookReady, t)
 	apistest.CheckConditionOngoing(tis, ControllerReady, t)
 	apistest.CheckConditionOngoing(tis, AllDeploymentsReady, t)
+	apistest.CheckConditionOngoing(tis, JobCompleted, t)
 
 	// CrdsInstall succeeds
 	tis.MarkCRDsInstalled()
@@ -118,6 +123,9 @@ func TestTektonInstallerSetErrorPath(t *testing.T) {
 
 	tis.MarkAllDeploymentsReady()
 	apistest.CheckConditionSucceeded(tis, AllDeploymentsReady, t)
+
+	tis.MarkJobCompleted()
+	apistest.CheckConditionSucceeded(tis, JobCompleted, t)
 
 	if ready := tis.IsReady(); !ready {
 		t.Errorf("tt.IsReady() = %v, want true", ready)

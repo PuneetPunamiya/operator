@@ -54,8 +54,10 @@ type DbSpec struct {
 }
 
 type ApiSpec struct {
-	HubConfigUrl  string `json:"hubConfigUrl,omitempty"`
-	ApiSecretName string `json:"secret,omitempty"`
+	HubConfigUrl     string `json:"hubConfigUrl,omitempty"`
+	ApiSecretName    string `json:"secret,omitempty"`
+	IngressHostUrl   string `json:"ingressHostUrl,omitempty"`
+	IngressClassName string `json:"ingressClassName,omitempty"`
 }
 
 // TektonResultSpec defines the desired state of TektonResult

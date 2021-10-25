@@ -17,9 +17,15 @@ limitations under the License.
 package tektonhub
 
 import (
+	"strings"
+
+	networkingv1 "k8s.io/api/networking/v1"
+	"k8s.io/client-go/kubernetes/scheme"
+
 	mf "github.com/manifestival/manifestival"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
 )
 
 func injectOwner(owner []v1.OwnerReference) mf.Transformer {
@@ -39,6 +45,43 @@ func changeNamespace(targetNamespace string) mf.Transformer {
 			u.SetNamespace(targetNamespace)
 			return nil
 		}
+		return nil
+	}
+}
+
+func updateIngressClassAnnotation(ingressClass string) mf.Transformer {
+	return func(u *unstructured.Unstructured) error {
+		annotations := u.GetAnnotations()
+		for key, _ := range annotations {
+			if strings.EqualFold(key, "kubernetes.io/ingress.class") {
+				annotations[key] = ingressClass
+			}
+		}
+
+		u.SetAnnotations(annotations)
+		return nil
+	}
+}
+
+func updateIngressHostValue(hostValue string) mf.Transformer {
+	return func(u *unstructured.Unstructured) error {
+
+		ingress := &networkingv1.Ingress{}
+		if err := scheme.Scheme.Convert(u, ingress, nil); err != nil {
+			return err
+		}
+
+		ingress.Spec.Rules[0].Host = hostValue
+
+		object, err := runtime.DefaultUnstructuredConverter.ToUnstructured(ingress)
+		if err != nil {
+			return err
+		}
+
+		u = &unstructured.Unstructured{
+			Object: object,
+		}
+
 		return nil
 	}
 }

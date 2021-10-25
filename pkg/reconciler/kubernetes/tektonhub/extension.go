@@ -85,6 +85,9 @@ func (ke kubernetesExtension) PostReconcile(ctx context.Context, tc v1alpha1.Tek
 	manifest, err := manifest.Filter(mf.ByKind("Ingress")).Transform(
 		injectOwner([]metav1.OwnerReference{ownerRef}),
 		changeNamespace("tekton-pipelines"),
+		updateIngressClassAnnotation(th.Spec.Api.IngressClassName),
+		// not working
+		updateIngressHostValue(th.Spec.Api.IngressHostUrl),
 	)
 	if err != nil {
 		logger.Error("failed to transform manifest")
@@ -95,12 +98,12 @@ func (ke kubernetesExtension) PostReconcile(ctx context.Context, tc v1alpha1.Tek
 		return err
 	}
 
-	route, err := getRouteHost(&manifest)
+	url, err := getIngressHost(&manifest)
 	if err != nil {
 		return err
 	}
 
-	th.Status.SetApiRoute(route)
+	th.Status.SetApiRoute(url)
 
 	return nil
 }
@@ -108,7 +111,7 @@ func (ke kubernetesExtension) Finalize(context.Context, v1alpha1.TektonComponent
 	return nil
 }
 
-func getRouteHost(manifest *mf.Manifest) (string, error) {
+func getIngressHost(manifest *mf.Manifest) (string, error) {
 	var hostUrl string
 	for _, r := range manifest.Filter(mf.ByKind("Ingress")).Resources() {
 		u, err := manifest.Client.Get(&r)
@@ -116,11 +119,11 @@ func getRouteHost(manifest *mf.Manifest) (string, error) {
 			return "", err
 		}
 		if u.GetName() == "tekton-hub-api" {
-			route := &v1.Ingress{}
-			if err := scheme.Scheme.Convert(u, route, nil); err != nil {
+			ingress := &v1.Ingress{}
+			if err := scheme.Scheme.Convert(u, ingress, nil); err != nil {
 				return "", err
 			}
-			rules := route.Spec.Rules
+			rules := ingress.Spec.Rules
 			for i, rule := range rules {
 				if i == len(rules)-1 {
 					hostUrl += fmt.Sprintf("http://%s", rule.Host)

@@ -5,7 +5,7 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
-    http://www.apache.org/licenses/LICENSE-2.0
+   http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
@@ -76,4 +76,68 @@ func Test_ValidateTektonConfig_InvalidHubParamValue(t *testing.T) {
 
 	err := tc.Validate(context.TODO())
 	assert.Equal(t, "invalid value: test: spec.hub.params.enable-devconsole-integration[0]", err.Error())
+}
+
+func Test_ValidateTektonHub_MissingHubConfigUrl(t *testing.T) {
+
+	th := &TektonHub{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "name",
+			Namespace: "namespace",
+		},
+		Spec: TektonHubSpec{
+			Db: DbSpec{
+				DbSecretName: "db",
+			},
+			Api: ApiSpec{
+				ApiSecretName: "api",
+			},
+		},
+	}
+
+	err := th.Validate(context.TODO())
+	assert.Equal(t, "missing field(s): spec.api.HubConfigUrl", err.Error())
+}
+
+func Test_ValidateTektonHub_MissingApiSecretName(t *testing.T) {
+
+	th := &TektonHub{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "name",
+			Namespace: "namespace",
+		},
+		Spec: TektonHubSpec{
+			Db: DbSpec{
+				DbSecretName: "db",
+			},
+			Api: ApiSpec{
+				HubConfigUrl: "https://hubconfigurl.com",
+			},
+		},
+	}
+
+	err := th.Validate(context.TODO())
+	assert.Equal(t, "missing field(s): spec.api.ApiSecretName", err.Error())
+}
+
+func Test_ValidateTektonHub_InvalidHubConfigUrl(t *testing.T) {
+
+	th := &TektonHub{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "name",
+			Namespace: "namespace",
+		},
+		Spec: TektonHubSpec{
+			Db: DbSpec{
+				DbSecretName: "db",
+			},
+			Api: ApiSpec{
+				ApiSecretName: "api",
+				HubConfigUrl:  "hubconfigurl",
+			},
+		},
+	}
+
+	err := th.Validate(context.TODO())
+	assert.Equal(t, "invalid value: hubconfigurl: spec.api.HubConfigUrl", err.Error())
 }

@@ -29,6 +29,7 @@ const (
 	WebhookReady         apis.ConditionType = "WebhooksReady"
 	ControllerReady      apis.ConditionType = "ControllersReady"
 	AllDeploymentsReady  apis.ConditionType = "AllDeploymentsReady"
+	// JobCompleted         apis.ConditionType = "JobCompleted"
 )
 
 var (

@@ -24,6 +24,7 @@ import (
 	mf "github.com/manifestival/manifestival"
 	"github.com/manifestival/manifestival/fake"
 	appsv1 "k8s.io/api/apps/v1"
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -47,6 +48,8 @@ var (
 	deployment         = namespacedResource("apps/v1", "Deployment", "test", "test-deployment")
 	service            = namespacedResource("v1", "Service", "test", "test-service")
 	hpa                = namespacedResource("autoscaling/v2beta1", "HorizontalPodAutoscaler", "test", "test-hpa")
+	pvc                = namespacedResource("v1", "PersistentVolumeClaim", "test", "test-pvc")
+	job                = namespacedResource("batch/v1", "Job", "test", "test-job")
 )
 
 type fakeClient struct {
@@ -99,7 +102,7 @@ func clusterScopedResource(apiVersion, kind, name string) unstructured.Unstructu
 func TestInstaller(t *testing.T) {
 
 	in := []unstructured.Unstructured{namespace, deployment, clusterRole, role,
-		roleBinding, clusterRoleBinding, serviceAccount, crd, validatingWebhook, mutatingWebhook, configMap, service, hpa, secret}
+		roleBinding, clusterRoleBinding, serviceAccount, crd, validatingWebhook, mutatingWebhook, configMap, service, hpa, secret, pvc, job}
 
 	client := &fakeClient{}
 	manifest, err := mf.ManifestFrom(mf.Slice(in), mf.UseClient(client))
@@ -140,7 +143,7 @@ func TestInstaller(t *testing.T) {
 	client.creates = []unstructured.Unstructured{}
 
 	want = []unstructured.Unstructured{serviceAccount, clusterRoleBinding, role,
-		roleBinding, configMap, secret, hpa}
+		roleBinding, configMap, secret, hpa, job, pvc}
 
 	err = i.EnsureNamespaceScopedResources()
 	if err != nil {
@@ -243,6 +246,34 @@ var (
 				Type:   appsv1.DeploymentAvailable,
 				Status: corev1.ConditionFalse,
 			}},
+		},
+	}
+	completedAbcJob = &batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: "test",
+			Name:      "completed-abc",
+		},
+		Status: batchv1.JobStatus{
+			Conditions: []batchv1.JobCondition{
+				{
+					Type:   batchv1.JobComplete,
+					Status: corev1.ConditionTrue,
+				},
+			},
+		},
+	}
+	failedAbcJob = &batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: "test",
+			Name:      "failed-abc",
+		},
+		Status: batchv1.JobStatus{
+			Conditions: []batchv1.JobCondition{
+				{
+					Type:   batchv1.JobFailed,
+					Status: corev1.ConditionFalse,
+				},
+			},
 		},
 	}
 )
@@ -356,6 +387,44 @@ func TestAllDeploymentsNotReady(t *testing.T) {
 	}
 
 	err = i.AllDeploymentsReady()
+	if err == nil {
+		t.Fatal("Expected Error but got nil ")
+	}
+}
+
+func TestJobCompleted(t *testing.T) {
+	in := []unstructured.Unstructured{namespacedResource("batch/v1", "Job", "test", "completed-abc")}
+
+	client := fake.New([]runtime.Object{completedAbcJob}...)
+	manifest, err := mf.ManifestFrom(mf.Slice(in), mf.UseClient(client))
+	if err != nil {
+		t.Fatalf("Failed to generate manifest: %v", err)
+	}
+
+	i := installer{
+		Manifest: manifest,
+	}
+
+	err = i.IsJobCompleted()
+	if err != nil {
+		t.Fatal("Unexpected Error: ", err)
+	}
+}
+
+func TestJobFailed(t *testing.T) {
+	in := []unstructured.Unstructured{namespacedResource("batch/v1", "Job", "test", "failed-abc")}
+
+	client := fake.New([]runtime.Object{failedAbcJob}...)
+	manifest, err := mf.ManifestFrom(mf.Slice(in), mf.UseClient(client))
+	if err != nil {
+		t.Fatalf("Failed to generate manifest: %v", err)
+	}
+
+	i := installer{
+		Manifest: manifest,
+	}
+
+	err = i.IsJobCompleted()
 	if err == nil {
 		t.Fatal("Expected Error but got nil ")
 	}

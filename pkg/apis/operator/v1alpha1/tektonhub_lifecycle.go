@@ -30,6 +30,9 @@ const (
 	// API
 	ApiDependenciesInstalled apis.ConditionType = "ApiDependenciesInstalled"
 	ApiInstallerSetAvailable apis.ConditionType = "ApiInstallSetAvailable"
+	// UI
+	UIDependenciesInstalled apis.ConditionType = "UiDependenciesInstalled"
+	UIInstallerSetAvailable apis.ConditionType = "UiInstallSetAvailable"
 )
 
 var (
@@ -44,6 +47,8 @@ var (
 		DbMigrationInstallerSetAvailable,
 		ApiDependenciesInstalled,
 		ApiInstallerSetAvailable,
+		UIDependenciesInstalled,
+		UIInstallerSetAvailable,
 		PostReconciler,
 	)
 )
@@ -111,6 +116,26 @@ func (ths *TektonHubStatus) MarkApiDependencyMissing(msg string) {
 
 func (ths *TektonHubStatus) MarkApiDependenciesInstalled() {
 	hubCondSet.Manage(ths).MarkTrue(ApiDependenciesInstalled)
+}
+
+func (ths *TektonHubStatus) MarkUiDependencyInstalling(msg string) {
+	ths.MarkNotReady("Dependencies installing for UI")
+	hubCondSet.Manage(ths).MarkFalse(
+		UIDependenciesInstalled,
+		"Error",
+		"Dependencies are installing for UI: %s", msg)
+}
+
+func (ths *TektonHubStatus) MarkUiDependencyMissing(msg string) {
+	ths.MarkNotReady("Missing Dependencies for UI")
+	hubCondSet.Manage(ths).MarkFalse(
+		UIDependenciesInstalled,
+		"Error",
+		"Dependencies are missing for UI: %s", msg)
+}
+
+func (ths *TektonHubStatus) MarkUiDependenciesInstalled() {
+	hubCondSet.Manage(ths).MarkTrue(UIDependenciesInstalled)
 }
 
 func (ths *TektonHubStatus) MarkDbDependencyInstalling(msg string) {
@@ -199,8 +224,30 @@ func (ths *TektonHubStatus) MarkApiInstallerSetNotAvailable(msg string) {
 		"Installer set not ready for API: %s", msg)
 }
 
+func (ths *TektonHubStatus) MarkUiInstallerSetNotAvailable(msg string) {
+	ths.MarkNotReady("TektonInstallerSet not ready for UI")
+	hubCondSet.Manage(ths).MarkFalse(
+		UIInstallerSetAvailable,
+		"Error",
+		"Installer set not ready for UI: %s", msg)
+}
+
 func (ths *TektonHubStatus) MarkApiInstallerSetAvailable() {
 	hubCondSet.Manage(ths).MarkTrue(ApiInstallerSetAvailable)
+}
+
+func (ths *TektonHubStatus) MarkUIInstallerSetAvailable() {
+	hubCondSet.Manage(ths).MarkTrue(UIInstallerSetAvailable)
+}
+
+// GetManifests gets the url links of the manifests.
+func (ths *TektonHubStatus) GetUiRoute() string {
+	return ths.UiRouteUrl
+}
+
+// SetManifests sets the url links of the manifests.
+func (ths *TektonHubStatus) SetUiRoute(routeUrl string) {
+	ths.UiRouteUrl = routeUrl
 }
 
 // TODO: below methods are not required for TektonAddon

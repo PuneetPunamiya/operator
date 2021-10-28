@@ -17,8 +17,8 @@ kind: CustomResourceDefinition
 metadata:
   name: tektonhubs.operator.tekton.dev
   labels:
-    version: "devel"
-    operator.tekton.dev/release: "devel"
+    version: 'devel'
+    operator.tekton.dev/release: 'devel'
 spec:
   group: operator.tekton.dev
   names:
@@ -46,6 +46,9 @@ spec:
           type: string
         - jsonPath: .status.apiUrl
           name: ApiUrl
+          type: string
+        - jsonPath: .status.uiUrl
+          name: UiUrl
           type: string
       schema:
         openAPIV3Schema:

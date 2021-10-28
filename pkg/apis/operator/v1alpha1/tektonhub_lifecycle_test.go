@@ -81,6 +81,18 @@ func TestTektonHubHappyPath(t *testing.T) {
 	th.MarkApiInstallerSetAvailable()
 	apistest.CheckConditionSucceeded(th, ApiInstallerSetAvailable, t)
 
+	// UI
+	th.MarkUiDependenciesInstalled()
+	apistest.CheckConditionSucceeded(th, UIDependenciesInstalled, t)
+
+	// InstallerSet is not ready when deployment pods are not up
+	th.MarkUiInstallerSetNotAvailable("waiting for UI deployments")
+	apistest.CheckConditionFailed(th, UIInstallerSetAvailable, t)
+
+	// Installer set created for UI
+	th.MarkUIInstallerSetAvailable()
+	apistest.CheckConditionSucceeded(th, UIInstallerSetAvailable, t)
+
 	//done
 
 	th.MarkPostReconcilerComplete()
@@ -136,6 +148,19 @@ func TestTektonHubErrorPath(t *testing.T) {
 	// Installer set created for DB
 	th.MarkApiInstallerSetAvailable()
 	apistest.CheckConditionSucceeded(th, ApiInstallerSetAvailable, t)
+
+	// UI
+
+	th.MarkUiDependenciesInstalled()
+	apistest.CheckConditionSucceeded(th, UIDependenciesInstalled, t)
+
+	// InstallerSet is not ready when deployment pods are not up
+	th.MarkUiInstallerSetNotAvailable("waiting for UI deployments")
+	apistest.CheckConditionFailed(th, UIInstallerSetAvailable, t)
+
+	// Installer set created for UI
+	th.MarkUIInstallerSetAvailable()
+	apistest.CheckConditionSucceeded(th, UIInstallerSetAvailable, t)
 
 	//done
 

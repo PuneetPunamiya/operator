@@ -60,11 +60,18 @@ type ApiSpec struct {
 	IngressClassName string `json:"ingressClassName,omitempty"`
 }
 
+type UiSpec struct {
+	ConfigMap        string `json:"configMap,omitempty"`
+	IngressHostUrl   string `json:"ingressHostUrl,omitempty"`
+	IngressClassName string `json:"ingressClassName,omitempty"`
+}
+
 // TektonResultSpec defines the desired state of TektonResult
 type TektonHubSpec struct {
 	CommonSpec `json:",inline"`
 	Db         DbSpec  `json:"db,omitempty"`
 	Api        ApiSpec `json:"api,omitempty"`
+	Ui         UiSpec  `json:"ui,omitempty"`
 }
 
 // TektonResultStatus defines the observed state of TektonResult
@@ -80,6 +87,8 @@ type TektonHubStatus struct {
 	Manifests []string `json:"manifests,omitempty"`
 
 	ApiRouteUrl string `json:"apiUrl,omitempty"`
+
+	UiRouteUrl string `json:"uiUrl,omitempty"`
 
 	// The current installer set name
 	// +optional

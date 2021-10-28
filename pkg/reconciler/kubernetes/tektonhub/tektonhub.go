@@ -60,7 +60,8 @@ type Reconciler struct {
 }
 
 var (
-	apiConfigMapName string = "api"
+	apiConfigMapName string = "tekton-hub-api"
+	uiConfigMapName  string = "tekton-hub-ui"
 	keyMissing       error  = fmt.Errorf("secret doesn't contains all the keys")
 	// Check that our Reconciler implements controller.Reconciler
 	_ tektonhubconciler.Interface = (*Reconciler)(nil)
@@ -231,11 +232,74 @@ func (r *Reconciler) ReconcileKind(ctx context.Context, th *v1alpha1.TektonHub) 
 
 	th.Status.MarkApiInstallerSetAvailable()
 
+	if err := r.extension.PreReconcile(ctx, th); err != nil {
+		return err
+	}
+
+	// Create UI
+	if err := r.validateUiConfigMap(ctx, th); err != nil {
+		th.Status.MarkUiDependencyMissing("UI config map not present")
+		return err
+	}
+
+	th.Status.MarkUiDependenciesInstalled()
+
+	exist, err = checkIfInstallerSetExist(ctx, r.operatorClientSet, version, th, uiInstallerSet)
+	if err != nil {
+		return err
+	}
+
+	if !exist {
+		th.Status.MarkApiInstallerSetNotAvailable("UI installer set not available")
+		uiLocation := filepath.Join(hubDir, "ui")
+		err := r.applyManifest(ctx, uiLocation, th, uiInstallerSet, version, "hub-ui")
+		if err != nil {
+			return err
+		}
+	}
+
+	err = r.checkComponentStatus(ctx, th, uiInstallerSet)
+	if err != nil {
+		th.Status.MarkUiInstallerSetNotAvailable(err.Error())
+		r.enqueueAfter(th, 10*time.Second)
+		return err
+	}
+
+	th.Status.MarkUIInstallerSetAvailable()
+
 	if err := r.extension.PostReconcile(ctx, th); err != nil {
 		return err
 	}
 
 	th.Status.MarkPostReconcilerComplete()
+
+	return nil
+}
+
+func (r *Reconciler) validateUiConfigMap(ctx context.Context, th *v1alpha1.TektonHub) error {
+	logger := logging.FromContext(ctx)
+
+	uiConfigMapKeys := []string{"API_URL", "GH_CLIENT_ID", "API_VERSION", "GHE_URL"}
+	_, err := r.getConfigMapForHub(ctx, uiConfigMapName, r.namespace, uiConfigMapKeys)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			configMap := createUiConfigMap(uiConfigMapName, r.namespace, th)
+			_, err = r.kubeClientSet.CoreV1().ConfigMaps(r.namespace).Create(ctx, configMap, metav1.CreateOptions{})
+			if err != nil {
+				logger.Error(err)
+				th.Status.MarkUiDependencyMissing(fmt.Sprintf("%s configMap is missing", uiConfigMapName))
+				return err
+			}
+			return nil
+		}
+		if err == keyMissing {
+			th.Status.MarkUiDependencyMissing(fmt.Sprintf("%s configMap is missing the keys", uiConfigMapName))
+			return err
+		} else {
+			logger.Error(err)
+			return err
+		}
+	}
 
 	return nil
 }
@@ -248,14 +312,14 @@ func (r *Reconciler) validateApiSecrets(ctx context.Context, th *v1alpha1.Tekton
 	apiSecretKeys := []string{"GH_CLIENT_ID", "GH_CLIENT_SECRET", "JWT_SIGNING_KEY", "ACCESS_JWT_EXPIRES_IN", "REFRESH_JWT_EXPIRES_IN", "GHE_URL"}
 	apiConfigMapKeys := []string{"CONFIG_FILE_URL"}
 
-	_, err := r.getSecretForHub(ctx, th.Spec.Api.ApiSecretName, r.namespace, apiSecretKeys)
+	_, err := r.getSecretForHub(ctx, apiConfigMapName, r.namespace, apiSecretKeys)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
-			th.Status.MarkApiDependencyMissing(fmt.Sprintf("%s secret is missing", th.Spec.Api.ApiSecretName))
+			th.Status.MarkApiDependencyMissing(fmt.Sprintf("%s secret is missing", apiConfigMapName))
 			return err
 		}
 		if err == keyMissing {
-			th.Status.MarkApiDependencyMissing(fmt.Sprintf("%s secret is missing the keys", th.Spec.Api.ApiSecretName))
+			th.Status.MarkApiDependencyMissing(fmt.Sprintf("%s secret is missing the keys", apiConfigMapName))
 			return err
 		} else {
 			logger.Error(err)
@@ -377,6 +441,24 @@ func createConfigMap(name, namespace string, th *v1alpha1.TektonHub) *corev1.Con
 		},
 		Data: map[string]string{
 			"CONFIG_FILE_URL": th.Spec.Api.HubConfigUrl,
+		},
+	}
+}
+
+func createUiConfigMap(name, namespace string, th *v1alpha1.TektonHub) *corev1.ConfigMap {
+	return &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+			Labels: map[string]string{
+				"ui": "tektonhub-ui",
+			},
+		},
+		Data: map[string]string{
+			"API_URL":      th.Status.ApiRouteUrl,
+			"GH_CLIENT_ID": "c5c4a3a6962ade2e9098",
+			"API_VERSION":  "v1",
+			"GHE_URL":      "",
 		},
 	}
 }

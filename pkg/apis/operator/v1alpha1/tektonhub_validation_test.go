@@ -36,7 +36,7 @@ func Test_ValidateTektonHub_MissingHubConfigUrl(t *testing.T) {
 				DbSecretName: "db",
 			},
 			Api: ApiSpec{
-				ApiSecretName: "api",
+				ApiSecretName: "tektonhub-api",
 			},
 		},
 	}

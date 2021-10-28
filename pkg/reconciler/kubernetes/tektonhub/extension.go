@@ -66,10 +66,6 @@ func (oe kubernetesExtension) Transformers(comp v1alpha1.TektonComponent) []mf.T
 	return nil
 }
 func (ke kubernetesExtension) PreReconcile(ctx context.Context, tc v1alpha1.TektonComponent) error {
-	return nil
-}
-func (ke kubernetesExtension) PostReconcile(ctx context.Context, tc v1alpha1.TektonComponent) error {
-
 	th := tc.(*v1alpha1.TektonHub)
 	logger := logging.FromContext(ctx)
 
@@ -88,6 +84,45 @@ func (ke kubernetesExtension) PostReconcile(ctx context.Context, tc v1alpha1.Tek
 		updateIngressClassAnnotation(th.Spec.Api.IngressClassName),
 		// not working
 		updateIngressHostValue(th.Spec.Api.IngressHostUrl),
+	)
+	if err != nil {
+		logger.Error("failed to transform manifest")
+		return err
+	}
+
+	if err := manifest.Filter(mf.ByKind("Ingress")).Apply(); err != nil {
+		return err
+	}
+
+	url, err := getIngressHost(&manifest)
+	if err != nil {
+		return err
+	}
+
+	th.Status.SetApiRoute(url)
+
+	return nil
+}
+func (ke kubernetesExtension) PostReconcile(ctx context.Context, tc v1alpha1.TektonComponent) error {
+
+	th := tc.(*v1alpha1.TektonHub)
+	logger := logging.FromContext(ctx)
+
+	koDataDir := os.Getenv(common.KoEnvKey)
+	hubDir := filepath.Join(koDataDir, "hub", common.TargetVersion(th), "ui")
+
+	manifest := ke.manifest.Append()
+
+	ownerRef := *metav1.NewControllerRef(th, th.GroupVersionKind())
+	if err := common.AppendManifest(&manifest, hubDir); err != nil {
+		return err
+	}
+	manifest, err := manifest.Filter(mf.ByKind("Ingress")).Transform(
+		injectOwner([]metav1.OwnerReference{ownerRef}),
+		changeNamespace("tekton-pipelines"),
+		updateIngressClassAnnotation(th.Spec.Ui.IngressClassName),
+		// not working
+		updateIngressHostValue(th.Spec.Ui.IngressHostUrl),
 	)
 	if err != nil {
 		logger.Error("failed to transform manifest")

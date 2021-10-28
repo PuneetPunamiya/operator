@@ -67,9 +67,6 @@ func (oe openshiftExtension) Transformers(comp v1alpha1.TektonComponent) []mf.Tr
 	return nil
 }
 func (oe openshiftExtension) PreReconcile(ctx context.Context, tc v1alpha1.TektonComponent) error {
-	return nil
-}
-func (oe openshiftExtension) PostReconcile(ctx context.Context, tc v1alpha1.TektonComponent) error {
 
 	th := tc.(*v1alpha1.TektonHub)
 	logger := logging.FromContext(ctx)
@@ -102,6 +99,42 @@ func (oe openshiftExtension) PostReconcile(ctx context.Context, tc v1alpha1.Tekt
 	}
 
 	th.Status.SetApiRoute(route)
+
+	return nil
+}
+func (oe openshiftExtension) PostReconcile(ctx context.Context, tc v1alpha1.TektonComponent) error {
+
+	th := tc.(*v1alpha1.TektonHub)
+	logger := logging.FromContext(ctx)
+
+	koDataDir := os.Getenv(common.KoEnvKey)
+	hubDir := filepath.Join(koDataDir, "hub", common.TargetVersion(th), "ui")
+
+	manifest := oe.manifest.Append()
+
+	ownerRef := *metav1.NewControllerRef(th, th.GroupVersionKind())
+	if err := common.AppendManifest(&manifest, hubDir); err != nil {
+		return err
+	}
+	manifest, err := manifest.Transform(
+		injectOwner([]metav1.OwnerReference{ownerRef}),
+		changeNamespace("openshift-pipelines"),
+	)
+	if err != nil {
+		logger.Error("failed to transform manifest")
+		return err
+	}
+
+	if err := manifest.Filter(mf.ByKind("Route")).Apply(); err != nil {
+		return err
+	}
+
+	route, err := getRouteHost(&manifest)
+	if err != nil {
+		return err
+	}
+
+	th.Status.SetUiRoute(route)
 
 	return nil
 }

@@ -20,7 +20,11 @@ spec:
   db:
     secret: db
   api:
-    secret: api
+    secret: tekton-hub-api
     hubConfigUrl: https://raw.githubusercontent.com/tektoncd/hub/main/config.yaml
     ingressHostUrl: kind.ingress.demo
+    ingressClassName: ambassador
+  ui:
+    configMap: tekton-hub-ui
+    ingressHostUrl: hub.ingress.demo
     ingressClassName: ambassador

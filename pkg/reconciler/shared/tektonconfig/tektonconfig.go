@@ -19,8 +19,6 @@ package tektonconfig
 import (
 	"context"
 	"fmt"
-	"os"
-	"path/filepath"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -108,7 +106,7 @@ func (r *Reconciler) ReconcileKind(ctx context.Context, tc *v1alpha1.TektonConfi
 		return err
 	}
 
-	if err := r.createOperatorVersionConfigMap(tc); err != nil {
+	if err := common.CreateOperatorVersionConfigMap(r.manifest, tc); err != nil {
 		return err
 	}
 
@@ -172,29 +170,6 @@ func (r *Reconciler) ReconcileKind(ctx context.Context, tc *v1alpha1.TektonConfi
 	return nil
 }
 
-func (r *Reconciler) createOperatorVersionConfigMap(tc *v1alpha1.TektonConfig) error {
-	koDataDir := os.Getenv(common.KoEnvKey)
-	operatorDir := filepath.Join(koDataDir, "info")
-
-	if err := common.AppendManifest(&r.manifest, operatorDir); err != nil {
-		return err
-	}
-
-	manifest, err := r.manifest.Transform(
-		mf.InjectNamespace(tc.GetSpec().GetTargetNamespace()),
-		mf.InjectOwner(tc),
-	)
-	if err != nil {
-		return err
-	}
-
-	if err = manifest.Apply(); err != nil {
-		return err
-	}
-
-	return nil
-}
-
 func (r *Reconciler) ensureTargetNamespaceExists(ctx context.Context, tc *v1alpha1.TektonConfig) error {
 
 	ns, err := r.kubeClientSet.CoreV1().Namespaces().List(ctx, metav1.ListOptions{
@@ -219,6 +194,10 @@ func (r *Reconciler) ensureTargetNamespaceExists(ctx context.Context, tc *v1alph
 			}
 		}
 	} else {
+		labels := map[string]string{"operator.tekton.dev/targetNamespace": "true"}
+		if err := common.CreateTargetNamespace(labels, tc, r.kubeClientSet); err != nil {
+			return err
+		}
 		ns := &corev1.Namespace{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: tc.GetSpec().GetTargetNamespace(),

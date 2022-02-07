@@ -130,7 +130,7 @@ func (r *Reconciler) ReconcileKind(ctx context.Context, th *v1alpha1.TektonHub) 
 
 	koDataDir := os.Getenv(common.KoEnvKey)
 	version := common.TargetVersion(th)
-	hubDir := filepath.Join(koDataDir, "hub", version)
+	hubDir := filepath.Join(koDataDir, "tekton-hub", version)
 
 	if th.GetName() != v1alpha1.HubResourceName {
 		msg := fmt.Sprintf("Resource ignored, Expected Name: %s, Got Name: %s",
@@ -199,6 +199,7 @@ func (r *Reconciler) ReconcileKind(ctx context.Context, th *v1alpha1.TektonHub) 
 	// Validate whether the secrets and configmap are created for API
 	if err := r.validateApiDependencies(ctx, th); err != nil {
 		th.Status.MarkApiDependencyMissing("api secrets not present")
+		r.enqueueAfter(th, 10*time.Second)
 		return err
 	}
 
@@ -422,6 +423,9 @@ func (r *Reconciler) applyManifest(ctx context.Context, manifestLocation string,
 	if err := common.AppendManifest(&manifest, manifestLocation); err != nil {
 		return err
 	}
+
+	manifest = manifest.Filter(mf.Not(mf.Any(mf.ByKind("Secret"), mf.ByKind("Namespace"))))
+
 	manifest, err := manifest.Transform(
 		mf.InjectOwner(th),
 		mf.InjectNamespace(namespace),

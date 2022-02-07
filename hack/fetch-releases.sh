@@ -120,7 +120,48 @@ release_yaml_pac() {
     echo ""
 }
 
-#Args: <target-platform> <pipelines version> <triggers version> <dashboard version> <results version> <pac version>
+
+release_yaml_hub() {
+  echo fetching '|' component: ${1} '|' version: ${2}
+  local version=$2
+
+  ko_data=${SCRIPT_DIR}/cmd/${TARGET}/operator/kodata
+  dirPath=${ko_data}/tekton-hub/${version}
+  rm -rf ${dirPath} || true
+  mkdir -p ${dirPath} || true
+
+  url=""
+  components="db db-migration"
+
+  if [[ ${TARGET} == "openshift" ]]; then
+    components="$components api-openshift ui-openshift"
+  else
+    components="$components api-k8s ui-k8s"
+  fi
+
+  dirNames=(db db-migration api ui)
+  arrayIndex=0
+
+  for component in ${components}; do
+    fileName=${component}.yaml
+    dest=${dirPath}/${dirNames[$arrayIndex]}
+    rm -rf ${dest} || true
+    mkdir -p ${dest} || true
+    url="https://github.com/tektoncd/hub/releases/download/${version}/${fileName}"
+    echo $url
+    http_response=$(curl -s -L -o ${dest}/${fileName} -w "%{http_code}" ${url})
+    echo url: ${url}
+    if [[ $http_response != "200" ]]; then
+      echo "Error: failed to get $comp yaml, status code: $http_response"
+      exit 1
+    fi
+    echo "Info: Added Hub/$fileName:$version release yaml !!"
+    echo ""
+    arrayIndex=$((arrayIndex+1))
+  done
+}
+
+#Args: <target-platform> <pipelines version> <triggers version> <dashboard version> <results version> <pac version> <hub version>
 main() {
   TARGET=$1
   p_version=${2}
@@ -143,6 +184,9 @@ main() {
     pac_version=${6}
     release_yaml_pac pipelinesascode release ${pac_version}
   fi
+
+  hub_version=${7}
+  release_yaml_hub hub ${hub_version}
 }
 
 main $@

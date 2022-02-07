@@ -93,7 +93,7 @@ func ComponentDir(instance v1alpha1.TektonComponent) string {
 	case *v1alpha1.TektonResult:
 		return filepath.Join(koDataDir, "tekton-results")
 	case *v1alpha1.TektonHub:
-		return filepath.Join(koDataDir, "hub")
+		return filepath.Join(koDataDir, "tekton-hub")
 	}
 	return ""
 }

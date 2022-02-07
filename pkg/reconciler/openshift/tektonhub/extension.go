@@ -21,10 +21,6 @@ import (
 	"os"
 	"path/filepath"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-
 	"github.com/go-logr/zapr"
 	mfc "github.com/manifestival/client-go-client"
 	mf "github.com/manifestival/manifestival"
@@ -77,17 +73,16 @@ func (oe openshiftExtension) PostReconcile(ctx context.Context, tc v1alpha1.Tekt
 	logger := logging.FromContext(ctx)
 
 	koDataDir := os.Getenv(common.KoEnvKey)
-	hubDir := filepath.Join(koDataDir, "hub", common.TargetVersion(th), "api")
+	hubDir := filepath.Join(koDataDir, "tekton-hub", common.TargetVersion(th), "api")
 
 	manifest := oe.manifest.Append()
 
-	ownerRef := *metav1.NewControllerRef(th, th.GroupVersionKind())
 	if err := common.AppendManifest(&manifest, hubDir); err != nil {
 		return err
 	}
 	manifest, err := manifest.Transform(
-		injectOwner([]metav1.OwnerReference{ownerRef}),
-		changeNamespace(defaultTargetNs),
+		mf.InjectOwner(th),
+		mf.InjectNamespace(defaultTargetNs),
 	)
 	if err != nil {
 		logger.Error("failed to transform manifest")
@@ -111,27 +106,6 @@ func (oe openshiftExtension) Finalize(context.Context, v1alpha1.TektonComponent)
 	return nil
 }
 
-func injectOwner(owner []v1.OwnerReference) mf.Transformer {
-	return func(u *unstructured.Unstructured) error {
-		kind := u.GetKind()
-		if kind == "CustomResourceDefinition" {
-			return nil
-		}
-		u.SetOwnerReferences(owner)
-		return nil
-	}
-}
-
-func changeNamespace(targetNamespace string) mf.Transformer {
-	return func(u *unstructured.Unstructured) error {
-		if u.GetNamespace() != targetNamespace {
-			u.SetNamespace(targetNamespace)
-			return nil
-		}
-		return nil
-	}
-}
-
 func getRouteHost(manifest *mf.Manifest) (string, error) {
 	var hostUrl string
 	for _, r := range manifest.Filter(mf.ByKind("Route")).Resources() {
@@ -139,7 +113,7 @@ func getRouteHost(manifest *mf.Manifest) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		if u.GetName() == "tekton-hub-api" {
+		if u.GetName() == "api" {
 			route := &routev1.Route{}
 			if err := scheme.Scheme.Convert(u, route, nil); err != nil {
 				return "", err

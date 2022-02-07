@@ -42,6 +42,7 @@ var (
 		DbDependenciesInstalled,
 		DbInstallerSetAvailable,
 		DatabasebMigrationDone,
+		PreReconciler,
 		ApiDependenciesInstalled,
 		ApiInstallerSetAvailable,
 		PostReconciler,
@@ -158,6 +159,18 @@ func (ths *TektonHubStatus) MarkApiInstallerSetNotAvailable(msg string) {
 
 func (ths *TektonHubStatus) MarkApiInstallerSetAvailable() {
 	hubCondSet.Manage(ths).MarkTrue(ApiInstallerSetAvailable)
+}
+
+func (ths *TektonHubStatus) MarkPreReconcilerFailed(msg string) {
+	ths.MarkNotReady("PreReconciliation failed")
+	hubCondSet.Manage(ths).MarkFalse(
+		PreReconciler,
+		"Error",
+		"PreReconciliation failed with message: %s", msg)
+}
+
+func (ths *TektonHubStatus) MarkPreReconcilerComplete() {
+	hubCondSet.Manage(ths).MarkTrue(PreReconciler)
 }
 
 func (ths *TektonHubStatus) MarkPostReconcilerFailed(msg string) {

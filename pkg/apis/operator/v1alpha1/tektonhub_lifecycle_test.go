@@ -43,6 +43,7 @@ func TestTektonHubHappyPath(t *testing.T) {
 	apistest.CheckConditionOngoing(th, DbInstallerSetAvailable, t)
 	apistest.CheckConditionOngoing(th, DatabasebMigrationDone, t)
 	apistest.CheckConditionOngoing(th, ApiDependenciesInstalled, t)
+	apistest.CheckConditionOngoing(th, PreReconciler, t)
 	apistest.CheckConditionOngoing(th, ApiInstallerSetAvailable, t)
 	apistest.CheckConditionOngoing(th, PostReconciler, t)
 
@@ -73,6 +74,9 @@ func TestTektonHubHappyPath(t *testing.T) {
 	th.MarkApiDependenciesInstalled()
 	apistest.CheckConditionSucceeded(th, ApiDependenciesInstalled, t)
 
+	th.MarkPreReconcilerComplete()
+	apistest.CheckConditionSucceeded(th, PreReconciler, t)
+
 	// InstallerSet is not ready when deployment pods are not up
 	th.MarkApiInstallerSetNotAvailable("waiting for API deployments")
 	apistest.CheckConditionFailed(th, ApiInstallerSetAvailable, t)
@@ -97,6 +101,7 @@ func TestTektonHubErrorPath(t *testing.T) {
 	apistest.CheckConditionOngoing(th, DbInstallerSetAvailable, t)
 	apistest.CheckConditionOngoing(th, DatabasebMigrationDone, t)
 	apistest.CheckConditionOngoing(th, ApiDependenciesInstalled, t)
+	apistest.CheckConditionOngoing(th, PreReconciler, t)
 	apistest.CheckConditionOngoing(th, ApiInstallerSetAvailable, t)
 	apistest.CheckConditionOngoing(th, PostReconciler, t)
 
@@ -122,6 +127,9 @@ func TestTektonHubErrorPath(t *testing.T) {
 
 	th.MarkApiDependenciesInstalled()
 	apistest.CheckConditionSucceeded(th, ApiDependenciesInstalled, t)
+
+	th.MarkPreReconcilerComplete()
+	apistest.CheckConditionSucceeded(th, PreReconciler, t)
 
 	// InstallerSet is not ready when deployment pods are not up
 	th.MarkApiInstallerSetNotAvailable("waiting for API deployments")

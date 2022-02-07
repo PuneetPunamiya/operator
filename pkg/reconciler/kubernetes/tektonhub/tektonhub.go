@@ -205,6 +205,13 @@ func (r *Reconciler) ReconcileKind(ctx context.Context, th *v1alpha1.TektonHub) 
 
 	th.Status.MarkApiDependenciesInstalled()
 
+	// Create the API route based on platform
+	if err := r.extension.PreReconcile(ctx, th); err != nil {
+		return err
+	}
+
+	th.Status.MarkPreReconcilerComplete()
+
 	exist, err = checkIfInstallerSetExist(ctx, r.operatorClientSet, version, th, apiInstallerSet)
 	if err != nil {
 		return err
@@ -424,7 +431,7 @@ func (r *Reconciler) applyManifest(ctx context.Context, manifestLocation string,
 		return err
 	}
 
-	manifest = manifest.Filter(mf.Not(mf.Any(mf.ByKind("Secret"), mf.ByKind("Namespace"))))
+	manifest = manifest.Filter(mf.Not(mf.Any(mf.ByKind("Secret"), mf.ByKind("Namespace"), mf.ByKind("ConfigMap"))))
 
 	manifest, err := manifest.Transform(
 		mf.InjectOwner(th),

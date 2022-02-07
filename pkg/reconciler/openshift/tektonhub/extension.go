@@ -18,6 +18,7 @@ package tektonhub
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 
@@ -31,6 +32,9 @@ import (
 	operatorclient "github.com/tektoncd/operator/pkg/client/injection/client"
 	"github.com/tektoncd/operator/pkg/reconciler/common"
 	"go.uber.org/zap"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
+	kubeclient "knative.dev/pkg/client/injection/kube/client"
 	"knative.dev/pkg/injection"
 	"knative.dev/pkg/logging"
 )
@@ -49,6 +53,7 @@ func OpenShiftExtension(ctx context.Context) common.Extension {
 
 	ext := openshiftExtension{
 		operatorClientSet: operatorclient.Get(ctx),
+		kubeClientSet:     kubeclient.Get(ctx),
 		manifest:          manifest,
 	}
 	return ext
@@ -56,6 +61,7 @@ func OpenShiftExtension(ctx context.Context) common.Extension {
 
 type openshiftExtension struct {
 	operatorClientSet versioned.Interface
+	kubeClientSet     kubernetes.Interface
 	manifest          mf.Manifest
 }
 
@@ -63,10 +69,6 @@ func (oe openshiftExtension) Transformers(comp v1alpha1.TektonComponent) []mf.Tr
 	return nil
 }
 func (oe openshiftExtension) PreReconcile(ctx context.Context, tc v1alpha1.TektonComponent) error {
-	return nil
-}
-func (oe openshiftExtension) PostReconcile(ctx context.Context, tc v1alpha1.TektonComponent) error {
-
 	defaultTargetNs := os.Getenv("DEFAULT_TARGET_NAMESPACE")
 
 	th := tc.(*v1alpha1.TektonHub)
@@ -93,12 +95,48 @@ func (oe openshiftExtension) PostReconcile(ctx context.Context, tc v1alpha1.Tekt
 		return err
 	}
 
-	route, err := getRouteHost(&manifest)
+	route, err := getRouteHost(&manifest, "api")
 	if err != nil {
 		return err
 	}
 
 	th.Status.SetApiRoute(route)
+
+	authRoute, err := getRouteHost(&manifest, "auth")
+	if err != nil {
+		return err
+	}
+
+	if err := oe.updateApiSecret(ctx, authRoute); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (oe openshiftExtension) updateApiSecret(ctx context.Context, authRoute string) error {
+
+	secret, err := oe.kubeClientSet.CoreV1().Secrets("openshift-pipelines").Get(ctx, "api", metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
+
+	if secret.Data["AUTH_BASE_URL"] != nil && len(secret.Data["AUTH_BASE_URL"]) != 0 {
+		delete(secret.Data, "AUTH_BASE_URL")
+	}
+
+	secret.StringData = make(map[string]string)
+	secret.StringData["AUTH_BASE_URL"] = fmt.Sprintf("https://%s", authRoute)
+
+	_, err = oe.kubeClientSet.CoreV1().Secrets("openshift-pipelines").Update(ctx, secret, metav1.UpdateOptions{})
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (oe openshiftExtension) PostReconcile(ctx context.Context, tc v1alpha1.TektonComponent) error {
 
 	return nil
 }
@@ -106,14 +144,14 @@ func (oe openshiftExtension) Finalize(context.Context, v1alpha1.TektonComponent)
 	return nil
 }
 
-func getRouteHost(manifest *mf.Manifest) (string, error) {
+func getRouteHost(manifest *mf.Manifest, routeName string) (string, error) {
 	var hostUrl string
 	for _, r := range manifest.Filter(mf.ByKind("Route")).Resources() {
 		u, err := manifest.Client.Get(&r)
 		if err != nil {
 			return "", err
 		}
-		if u.GetName() == "api" {
+		if u.GetName() == routeName {
 			route := &routev1.Route{}
 			if err := scheme.Scheme.Convert(u, route, nil); err != nil {
 				return "", err

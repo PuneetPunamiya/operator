@@ -111,6 +111,34 @@ func (oe openshiftExtension) PreReconcile(ctx context.Context, tc v1alpha1.Tekto
 		return err
 	}
 
+	// Create UI route based on the value of ui i.e. false/true
+	if th.Spec.Ui == "true" {
+		uiHubDir := filepath.Join(koDataDir, "tekton-hub", common.TargetVersion(th), "ui")
+		uiManifest := oe.manifest.Append()
+
+		if err := common.AppendManifest(&uiManifest, uiHubDir); err != nil {
+			return err
+		}
+		uiManifest, err := uiManifest.Transform(
+			mf.InjectOwner(th),
+			mf.InjectNamespace(defaultTargetNs),
+		)
+		if err != nil {
+			logger.Error("failed to transform manifest")
+			return err
+		}
+
+		if err := uiManifest.Filter(mf.ByKind("Route")).Apply(); err != nil {
+			return err
+		}
+
+		uiRoute, err := getRouteHost(&uiManifest, "ui")
+		if err != nil {
+			return err
+		}
+		
+		th.Status.SetUiRoute(uiRoute)
+	}
 	return nil
 }
 

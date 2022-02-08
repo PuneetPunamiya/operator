@@ -33,7 +33,7 @@ spec:
       served: true
       storage: true
       subresources:
-        status: {}
+        status: { }
       additionalPrinterColumns:
         - jsonPath: .status.version
           name: Version
@@ -46,6 +46,9 @@ spec:
           type: string
         - jsonPath: .status.apiUrl
           name: ApiUrl
+          type: string
+        - jsonPath: .status.uiUrl
+          name: UiUrl
           type: string
       schema:
         openAPIV3Schema:

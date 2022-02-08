@@ -44,6 +44,7 @@ type TektonHubSpec struct {
 	Hub        `json:",inline"`
 	Db         DbSpec  `json:"db,omitempty"`
 	Api        ApiSpec `json:"api,omitempty"`
+	Ui         string  `json:"ui,omitempty"`
 }
 
 // Hub defines the field to customize Hub component
@@ -78,6 +79,10 @@ type TektonHubStatus struct {
 	// The URL route for API which needs to be exposed
 	// +optional
 	ApiRouteUrl string `json:"apiUrl,omitempty"`
+
+	// The URL route for UI which needs to be exposed
+	// +optional
+	UiRouteUrl string `json:"uiUrl,omitempty"`
 
 	// The current installer set name
 	// +optional

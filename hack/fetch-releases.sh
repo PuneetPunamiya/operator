@@ -134,12 +134,12 @@ release_yaml_hub() {
   components="db db-migration"
 
   if [[ ${TARGET} == "openshift" ]]; then
-    components="$components api-openshift"
+    components="$components api-openshift ui-openshift"
   else
-    components="$components api-k8s"
+    components="$components api-k8s ui-k8s"
   fi
 
-  dirNames=(db db-migration api)
+  dirNames=(db db-migration api ui)
   arrayIndex=0
 
   for component in ${components}; do

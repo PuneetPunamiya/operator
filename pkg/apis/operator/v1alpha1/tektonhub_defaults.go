@@ -25,4 +25,8 @@ func (th *TektonHub) SetDefaults(ctx context.Context) {
 	if th.Spec.Db.DbSecretName == "" {
 		th.Spec.Db.DbSecretName = "db"
 	}
+
+	if th.Spec.Ui == "" {
+		th.Spec.Ui = "false"
+	}
 }

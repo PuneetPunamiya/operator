@@ -19,13 +19,13 @@ package tektonpipeline
 import (
 	"context"
 	"fmt"
+
 	mf "github.com/manifestival/manifestival"
 	"github.com/tektoncd/operator/pkg/apis/operator/v1alpha1"
 	clientset "github.com/tektoncd/operator/pkg/client/clientset/versioned"
 	tektonpipelinereconciler "github.com/tektoncd/operator/pkg/client/injection/reconciler/operator/v1alpha1/tektonpipeline"
 	"github.com/tektoncd/operator/pkg/reconciler/common"
 	"github.com/tektoncd/operator/pkg/reconciler/kubernetes/tektoninstallerset"
-	"github.com/tektoncd/operator/pkg/reconciler/shared/hash"
 	"go.uber.org/zap"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -147,17 +147,27 @@ func (r *Reconciler) ReconcileKind(ctx context.Context, tp *v1alpha1.TektonPipel
 	// Mark PreReconcile Complete
 	tp.Status.MarkPreReconcilerComplete()
 
-	// Check if an tekton installer set already exists, if not then create
-	labelSelector, err := common.LabelSelector(ls)
+	// Get the installerset
+
+	existingInstallerSet, err := common.GetInstallerSet(ctx, ls, r.operatorClientSet)
 	if err != nil {
 		return err
 	}
-	existingInstallerSet, err := tektoninstallerset.CurrentInstallerSetName(ctx, r.operatorClientSet, labelSelector)
-	if err != nil {
-		return err
-	}
+
 	if existingInstallerSet == "" {
-		createdIs, err := r.createInstallerSet(ctx, tp)
+		if err := r.transform(ctx, &r.manifest, tp); err != nil {
+			tp.Status.MarkNotReady("transformation failed: " + err.Error())
+			return err
+		}
+
+		installer := common.SharedInstaller{
+			OperatorClientSet: r.operatorClientSet,
+			Manifest:          r.manifest,
+			OperatorVersion:   r.operatorVersion,
+			InstallerSetType:  v1alpha1.PipelineResourceName,
+		}
+
+		createdIs, err := installer.CreateInstallerSet(ctx, tp)
 		if err != nil {
 			return err
 		}
@@ -167,12 +177,26 @@ func (r *Reconciler) ReconcileKind(ctx context.Context, tp *v1alpha1.TektonPipel
 		return r.updateTektonPipelineStatus(ctx, tp, createdIs)
 	}
 
+	// Fetch the installer set
+
 	// If exists, then fetch the TektonInstallerSet
 	installedTIS, err := r.operatorClientSet.OperatorV1alpha1().TektonInstallerSets().
 		Get(ctx, existingInstallerSet, metav1.GetOptions{})
 	if err != nil {
 		if apierrors.IsNotFound(err) {
-			createdIs, err := r.createInstallerSet(ctx, tp)
+			if err := r.transform(ctx, &r.manifest, tp); err != nil {
+				tp.Status.MarkNotReady("transformation failed: " + err.Error())
+				return err
+			}
+
+			installer := common.SharedInstaller{
+				OperatorClientSet: r.operatorClientSet,
+				Manifest:          r.manifest,
+				OperatorVersion:   r.operatorVersion,
+				InstallerSetType:  v1alpha1.PipelineResourceName,
+			}
+
+			createdIs, err := installer.CreateInstallerSet(ctx, tp)
 			if err != nil {
 				return err
 			}
@@ -194,66 +218,19 @@ func (r *Reconciler) ReconcileKind(ctx context.Context, tp *v1alpha1.TektonPipel
 	// If any of the thing above is not same then delete the existing TektonInstallerSet
 	// and create a new with expected properties
 
-	if installerSetTargetNamespace != tp.Spec.TargetNamespace || installerSetReleaseVersion != r.operatorVersion {
-		// Delete the existing TektonInstallerSet
-		err := r.operatorClientSet.OperatorV1alpha1().TektonInstallerSets().
-			Delete(ctx, existingInstallerSet, metav1.DeleteOptions{})
-		if err != nil {
-			logger.Error("failed to delete InstallerSet: %s", err)
-			return err
-		}
-
-		// Make sure the TektonInstallerSet is deleted
-		_, err = r.operatorClientSet.OperatorV1alpha1().TektonInstallerSets().
-			Get(ctx, existingInstallerSet, metav1.GetOptions{})
-		if err == nil {
-			tp.Status.MarkNotReady("Waiting for previous installer set to get deleted")
-			return v1alpha1.REQUEUE_EVENT_AFTER
-		}
-		if !apierrors.IsNotFound(err) {
-			logger.Error("failed to get InstallerSet: %s", err)
-			return err
-		}
-		return nil
-
-	} else {
-		// If target namespace and version are not changed then check if spec
-		// of TektonPipeline is changed by checking hash stored as annotation on
-		// TektonInstallerSet with computing new hash of TektonPipeline Spec
-
-		// Hash of TektonPipeline Spec
-		expectedSpecHash, err := hash.Compute(tp.Spec)
-		if err != nil {
-			return err
-		}
-
-		// spec hash stored on installerSet
-		lastAppliedHash := installedTIS.GetAnnotations()[v1alpha1.LastAppliedHashKey]
-
-		if lastAppliedHash != expectedSpecHash {
-			manifest := r.manifest
-			if err := r.transform(ctx, &manifest, tp); err != nil {
-				logger.Error("manifest transformation failed:  ", err)
-				return err
-			}
-
-			// Update the spec hash
-			current := installedTIS.GetAnnotations()
-			current[v1alpha1.LastAppliedHashKey] = expectedSpecHash
-			installedTIS.SetAnnotations(current)
-
-			// Update the manifests
-			installedTIS.Spec.Manifests = manifest.Resources()
-
-			if _, err = r.operatorClientSet.OperatorV1alpha1().TektonInstallerSets().
-				Update(ctx, installedTIS, metav1.UpdateOptions{}); err != nil {
-				return err
-			}
-
-			// after updating installer set enqueue after a duration
-			// to allow changes to get deployed
-			return v1alpha1.REQUEUE_EVENT_AFTER
-		}
+	if err := r.transform(ctx, &r.manifest, tp); err != nil {
+		logger.Error("manifest transformation failed:  ", err)
+		return err
+	}
+	installer := common.SharedInstaller{
+		OperatorClientSet: r.operatorClientSet,
+		Manifest:          r.manifest,
+		OperatorVersion:   r.operatorVersion,
+		InstallerSetType:  v1alpha1.PipelineResourceName,
+	}
+	err = installer.UpdateInstallerSet(ctx, tp, installedTIS, existingInstallerSet, installerSetTargetNamespace, installerSetReleaseVersion)
+	if err != nil {
+		return err
 	}
 
 	// Mark InstallerSet Available
@@ -306,55 +283,6 @@ func (r *Reconciler) updateTektonPipelineStatus(ctx context.Context, tp *v1alpha
 	tp.Status.SetTektonInstallerSet(createdIs.Name)
 	tp.Status.SetVersion(r.pipelineVersion)
 	return nil
-}
-
-func (r *Reconciler) createInstallerSet(ctx context.Context, tp *v1alpha1.TektonPipeline) (*v1alpha1.TektonInstallerSet, error) {
-
-	manifest := r.manifest
-	if err := r.transform(ctx, &manifest, tp); err != nil {
-		tp.Status.MarkNotReady("transformation failed: " + err.Error())
-		return nil, err
-	}
-
-	// compute the hash of tektonpipeline spec and store as an annotation
-	// in further reconciliation we compute hash of tp spec and check with
-	// annotation, if they are same then we skip updating the object
-	// otherwise we update the manifest
-	specHash, err := hash.Compute(tp.Spec)
-	if err != nil {
-		return nil, err
-	}
-
-	// create installer set
-	tis := r.makeInstallerSet(tp, manifest, specHash)
-	createdIs, err := r.operatorClientSet.OperatorV1alpha1().TektonInstallerSets().
-		Create(ctx, tis, metav1.CreateOptions{})
-	if err != nil {
-		return nil, err
-	}
-	return createdIs, nil
-}
-
-func (r *Reconciler) makeInstallerSet(tp *v1alpha1.TektonPipeline, manifest mf.Manifest, tpSpecHash string) *v1alpha1.TektonInstallerSet {
-	ownerRef := *metav1.NewControllerRef(tp, tp.GetGroupVersionKind())
-	return &v1alpha1.TektonInstallerSet{
-		ObjectMeta: metav1.ObjectMeta{
-			GenerateName: fmt.Sprintf("%s-", v1alpha1.PipelineResourceName),
-			Labels: map[string]string{
-				v1alpha1.CreatedByKey:      createdByValue,
-				v1alpha1.InstallerSetType:  v1alpha1.PipelineResourceName,
-				v1alpha1.ReleaseVersionKey: r.operatorVersion,
-			},
-			Annotations: map[string]string{
-				v1alpha1.TargetNamespaceKey: tp.Spec.TargetNamespace,
-				v1alpha1.LastAppliedHashKey: tpSpecHash,
-			},
-			OwnerReferences: []metav1.OwnerReference{ownerRef},
-		},
-		Spec: v1alpha1.TektonInstallerSetSpec{
-			Manifests: manifest.Resources(),
-		},
-	}
 }
 
 func (r *Reconciler) targetNamespaceCheck(ctx context.Context, tp *v1alpha1.TektonPipeline) error {

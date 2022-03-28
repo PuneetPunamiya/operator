@@ -78,6 +78,8 @@ type TektonComponentStatus interface {
 
 	// IsReady return true if all conditions are satisfied
 	IsReady() bool
+
+	MarkNotReady(msg string)
 }
 
 // CommonSpec unifies common fields and functions on the Spec.

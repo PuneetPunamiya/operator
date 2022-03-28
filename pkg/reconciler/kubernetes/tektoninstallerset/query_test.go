@@ -18,14 +18,33 @@ package tektoninstallerset
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/tektoncd/operator/pkg/apis/operator/v1alpha1"
 	"github.com/tektoncd/operator/pkg/client/clientset/versioned/fake"
-	"github.com/tektoncd/operator/pkg/reconciler/common"
 	"gotest.tools/v3/assert"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/selection"
 )
+
+func LabelSelector(ls metav1.LabelSelector) (string, error) {
+	var (
+		err error
+		req *labels.Requirement
+		s   []string
+	)
+	for k, v := range ls.MatchLabels {
+		req, err = labels.NewRequirement(k, selection.Equals, []string{v})
+		if err != nil {
+			return "", fmt.Errorf("failed to create requirement: %w", err)
+		}
+		s = append(s, labels.NewSelector().Add(*req).String())
+	}
+	return strings.Join(s, ","), err
+}
 
 var (
 	pipelineLS = metav1.LabelSelector{
@@ -46,7 +65,7 @@ func TestCurrentInstallerSetName(t *testing.T) {
 
 	iSets := v1alpha1.TektonInstallerSetList{
 		Items: []v1alpha1.TektonInstallerSet{
-			v1alpha1.TektonInstallerSet{},
+			{},
 			{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "pipeline",
@@ -59,7 +78,7 @@ func TestCurrentInstallerSetName(t *testing.T) {
 		},
 	}
 	client := fake.NewSimpleClientset(&iSets)
-	labelSelector, err := common.LabelSelector(pipelineLS)
+	labelSelector, err := LabelSelector(pipelineLS)
 	if err != nil {
 		t.Error(err)
 	}
@@ -73,7 +92,7 @@ func TestCurrentInstallerSetNameNoMatching(t *testing.T) {
 
 	iSets := v1alpha1.TektonInstallerSetList{
 		Items: []v1alpha1.TektonInstallerSet{
-			v1alpha1.TektonInstallerSet{},
+			{},
 			{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "pipeline",
@@ -86,7 +105,7 @@ func TestCurrentInstallerSetNameNoMatching(t *testing.T) {
 		},
 	}
 	client := fake.NewSimpleClientset(&iSets)
-	labelSelector, err := common.LabelSelector(triggersLS)
+	labelSelector, err := LabelSelector(triggersLS)
 	if err != nil {
 		t.Error(err)
 	}
@@ -100,7 +119,7 @@ func TestCurrentInstallerSetNameWithDuplicates(t *testing.T) {
 
 	iSets := v1alpha1.TektonInstallerSetList{
 		Items: []v1alpha1.TektonInstallerSet{
-			v1alpha1.TektonInstallerSet{},
+			{},
 			{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "pipeline-1",
@@ -110,7 +129,7 @@ func TestCurrentInstallerSetNameWithDuplicates(t *testing.T) {
 					},
 				},
 			},
-			v1alpha1.TektonInstallerSet{
+			{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "pipeline-2",
 					Labels: map[string]string{
@@ -122,7 +141,7 @@ func TestCurrentInstallerSetNameWithDuplicates(t *testing.T) {
 		},
 	}
 	client := fake.NewSimpleClientset(&iSets)
-	labelSelector, err := common.LabelSelector(pipelineLS)
+	labelSelector, err := LabelSelector(pipelineLS)
 	if err != nil {
 		t.Error(err)
 	}

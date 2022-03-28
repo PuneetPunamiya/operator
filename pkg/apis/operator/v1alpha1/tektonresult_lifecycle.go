@@ -105,6 +105,13 @@ func (trs *TektonResultStatus) MarkDependencyMissing(msg string) {
 		"Dependency missing: %s", msg)
 }
 
+func (tps *TektonResultStatus) MarkNotReady(msg string) {
+	pipelineCondSet.Manage(tps).MarkFalse(
+		apis.ConditionReady,
+		"Error",
+		"Ready: %s", msg)
+}
+
 // GetVersion gets the currently installed version of the component.
 func (trs *TektonResultStatus) GetVersion() string {
 	return trs.Version

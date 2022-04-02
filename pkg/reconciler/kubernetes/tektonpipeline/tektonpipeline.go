@@ -19,6 +19,7 @@ package tektonpipeline
 import (
 	"context"
 	"fmt"
+
 	mf "github.com/manifestival/manifestival"
 	"github.com/tektoncd/operator/pkg/apis/operator/v1alpha1"
 	clientset "github.com/tektoncd/operator/pkg/client/clientset/versioned"
@@ -61,6 +62,24 @@ type Reconciler struct {
 	kubeClientSet   kubernetes.Interface
 	operatorVersion string
 	pipelineVersion string
+}
+
+// type PipelineInstaller struct {
+// 	Ctx       context.Context
+// 	Manifest  mf.Manifest
+// 	Extension common.Extension
+// 	Component v1alpha1.TektonComponent
+// }
+
+type PipelineInstaller struct {
+	Ctx               context.Context
+	Manifest          mf.Manifest
+	Extension         common.Extension
+	Component         v1alpha1.TektonComponent
+	OperatorVersion   string
+	CreatedByValue    string
+	InstallerSetType  string
+	OperatorClientSet clientset.Interface
 }
 
 var (
@@ -156,8 +175,23 @@ func (r *Reconciler) ReconcileKind(ctx context.Context, tp *v1alpha1.TektonPipel
 	if err != nil {
 		return err
 	}
+
+	p := PipelineInstaller{
+		Manifest:  r.manifest,
+		Ctx:       ctx,
+		Extension: r.extension,
+		Component: tp,
+	}
+
+	sh := common.Shared{
+		Obj:               tp,
+		Manifest:          r.manifest,
+		OperatorVersion:   r.operatorVersion,
+		OperatorClientSet: r.operatorClientSet,
+	}
+
 	if existingInstallerSet == "" {
-		createdIs, err := r.createInstallerSet(ctx, tp)
+		createdIs, err := sh.Create(p)
 		if err != nil {
 			return err
 		}
@@ -396,6 +430,45 @@ func (r *Reconciler) transform(ctx context.Context, manifest *mf.Manifest, comp 
 	}
 	trns = append(trns, extra...)
 	return common.Transform(ctx, manifest, instance, trns...)
+}
+
+// func (r PipelineInstaller) Transform() error {
+// 	fmt.Println("It rocks.....")
+// 	pipeline := r.Component.(*v1alpha1.TektonPipeline)
+// 	images := common.ToLowerCaseKeys(common.ImagesFromEnv(common.PipelinesImagePrefix))
+// 	instance := r.Component.(*v1alpha1.TektonPipeline)
+// 	// adding extension's transformers first to run them before `extra` transformers
+// 	trns := r.Extension.Transformers(instance)
+// 	extra := []mf.Transformer{
+// 		common.AddConfigMapValues(FeatureFlag, pipeline.Spec.PipelineProperties),
+// 		common.AddConfigMapValues(ConfigDefaults, pipeline.Spec.OptionalPipelineProperties),
+// 		common.AddConfigMapValues(ConfigMetrics, pipeline.Spec.PipelineMetricsProperties),
+// 		common.ApplyProxySettings,
+// 		common.DeploymentImages(images),
+// 		common.InjectLabelOnNamespace(proxyLabel),
+// 		common.AddConfiguration(pipeline.Spec.Config),
+// 	}
+// 	trns = append(trns, extra...)
+// 	return common.Transform(r.Ctx, &r.Manifest, instance, trns...)
+// }
+
+func (p PipelineInstaller) Transform() error {
+	pipeline := p.Component.(*v1alpha1.TektonPipeline)
+	images := common.ToLowerCaseKeys(common.ImagesFromEnv(common.PipelinesImagePrefix))
+	instance := p.Component.(*v1alpha1.TektonPipeline)
+	// adding extension's transformers first to run them before `extra` transformers
+	trns := p.Extension.Transformers(instance)
+	extra := []mf.Transformer{
+		common.AddConfigMapValues(FeatureFlag, pipeline.Spec.PipelineProperties),
+		common.AddConfigMapValues(ConfigDefaults, pipeline.Spec.OptionalPipelineProperties),
+		common.AddConfigMapValues(ConfigMetrics, pipeline.Spec.PipelineMetricsProperties),
+		common.ApplyProxySettings,
+		common.DeploymentImages(images),
+		common.InjectLabelOnNamespace(proxyLabel),
+		common.AddConfiguration(pipeline.Spec.Config),
+	}
+	trns = append(trns, extra...)
+	return common.Transform(p.Ctx, &p.Manifest, instance, trns...)
 }
 
 func (m *Recorder) logMetrics(status, version string, logger *zap.SugaredLogger) {

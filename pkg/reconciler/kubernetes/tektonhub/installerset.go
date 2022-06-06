@@ -14,7 +14,7 @@ import (
 // checkIfInstallerSetExist checks if installer set exists for a component and return true/false based on it
 // and if installer set which already exist is of older version then it deletes and return false to create a new
 // installer set
-func checkIfInstallerSetExist(ctx context.Context, oc clientset.Interface, relVersion string,
+func (r *Reconciler) checkIfInstallerSetExist(ctx context.Context, oc clientset.Interface, relVersion string,
 	th *v1alpha1.TektonHub, component string) (bool, error) {
 
 	// Check if installer set is already created
@@ -24,6 +24,30 @@ func checkIfInstallerSetExist(ctx context.Context, oc clientset.Interface, relVe
 	}
 
 	if compInstallerSet != "" {
+
+		fmt.Println("----------------------------> Yaha aayyooooo brooooo")
+
+		if component == dbInstallerSet {
+			pvc, err := r.checkPVC(ctx, th, "tekton-hub-db")
+			if err != nil {
+				return false, err
+			}
+
+			if !r.checkPVCOwnerRef(pvc, th) {
+				ownerRef := *metav1.NewControllerRef(th, th.GroupVersionKind())
+				pvc.SetOwnerReferences([]metav1.OwnerReference{ownerRef})
+
+				fmt.Println("OwnerReferece =====================>>>>>>>>>>>>>>>>>", pvc.GetOwnerReferences())
+
+				_, err := r.kubeClientSet.CoreV1().PersistentVolumeClaims(th.Spec.GetTargetNamespace()).Update(ctx, pvc, metav1.UpdateOptions{})
+				if err != nil {
+					return false, err
+				}
+
+				fmt.Println(">>>>>>>>>>>>>>>>>>>>>>. Set ho gaya bhai abhi chalna hi padega usko")
+			}
+		}
+
 		// if already created then check which version it is
 		ctIs, err := oc.OperatorV1alpha1().TektonInstallerSets().
 			Get(ctx, compInstallerSet, metav1.GetOptions{})

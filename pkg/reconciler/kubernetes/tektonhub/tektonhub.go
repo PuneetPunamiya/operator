@@ -185,7 +185,7 @@ func (r *Reconciler) manageUiComponent(ctx context.Context, th *v1alpha1.TektonH
 
 	th.Status.MarkUiDependenciesInstalled()
 
-	exist, err := checkIfInstallerSetExist(ctx, r.operatorClientSet, version, th, uiInstallerSet)
+	exist, err := r.checkIfInstallerSetExist(ctx, r.operatorClientSet, version, th, uiInstallerSet)
 	if err != nil {
 		return err
 	}
@@ -224,9 +224,26 @@ func (r *Reconciler) manageApiComponent(ctx context.Context, th *v1alpha1.Tekton
 
 	th.Status.MarkApiDependenciesInstalled()
 
-	exist, err := checkIfInstallerSetExist(ctx, r.operatorClientSet, version, th, apiInstallerSet)
+	exist, err := r.checkIfInstallerSetExist(ctx, r.operatorClientSet, version, th, apiInstallerSet)
 	if err != nil {
 		return err
+	}
+
+	if exist {
+		pvc, err := r.checkPVC(ctx, th, "tekton-hub-api")
+		if err != nil {
+			return err
+		}
+
+		if !r.checkPVCOwnerRef(pvc, th) {
+			ownerRef := *metav1.NewControllerRef(th, th.GroupVersionKind())
+			pvc.SetOwnerReferences([]metav1.OwnerReference{ownerRef})
+
+			_, err := r.kubeClientSet.CoreV1().PersistentVolumeClaims(th.Spec.GetTargetNamespace()).Update(ctx, pvc, metav1.UpdateOptions{})
+			if err != nil {
+				return err
+			}
+		}
 	}
 
 	if !exist {
@@ -259,7 +276,7 @@ func (r *Reconciler) manageApiComponent(ctx context.Context, th *v1alpha1.Tekton
 
 func (r *Reconciler) manageDbMigrationComponent(ctx context.Context, th *v1alpha1.TektonHub, hubDir, version string) error {
 	// Check if the InstallerSet is available for DB-migration
-	exist, err := checkIfInstallerSetExist(ctx, r.operatorClientSet, version, th, dbMigrationInstallerSet)
+	exist, err := r.checkIfInstallerSetExist(ctx, r.operatorClientSet, version, th, dbMigrationInstallerSet)
 	if err != nil {
 		return err
 	}
@@ -295,7 +312,7 @@ func (r *Reconciler) manageDbComponent(ctx context.Context, th *v1alpha1.TektonH
 	}
 	th.Status.MarkDbDependenciesInstalled()
 
-	exist, err := checkIfInstallerSetExist(ctx, r.operatorClientSet, version, th, dbInstallerSet)
+	exist, err := r.checkIfInstallerSetExist(ctx, r.operatorClientSet, version, th, dbInstallerSet)
 	if err != nil {
 		return err
 	}
@@ -494,6 +511,24 @@ func (r *Reconciler) transform(ctx context.Context, manifest mf.Manifest, th *v1
 	}
 
 	return &manifest, nil
+}
+
+func (r *Reconciler) checkPVC(ctx context.Context, th *v1alpha1.TektonHub, name string) (*corev1.PersistentVolumeClaim, error) {
+	pvc, err := r.kubeClientSet.CoreV1().PersistentVolumeClaims(th.Spec.GetTargetNamespace()).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	return pvc, nil
+}
+
+func (r *Reconciler) checkPVCOwnerRef(pvc *corev1.PersistentVolumeClaim, th *v1alpha1.TektonHub) bool {
+	if len(pvc.GetOwnerReferences()) == 1 {
+		if pvc.GetOwnerReferences()[0].Kind == th.Kind {
+			return true
+		}
+	}
+	return false
 }
 
 func applyPVC(ctx context.Context, manifest *mf.Manifest, th *v1alpha1.TektonHub) error {

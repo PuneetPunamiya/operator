@@ -224,8 +224,12 @@ func (r *Reconciler) ReconcileKind(ctx context.Context, tp *v1alpha1.TektonPipel
 		// of TektonPipeline is changed by checking hash stored as annotation on
 		// TektonInstallerSet with computing new hash of TektonPipeline Spec
 
-		// Hash of TektonPipeline Spec
-		expectedSpecHash, err := hash.Compute(tp.Spec)
+		// Hash of TektonInstallerSet Spec
+		newIs, err := r.generateInstallerSet(ctx, tp)
+		if err != nil {
+			return err
+		}
+		expectedSpecHash, err := hash.Compute(newIs.Spec)
 		if err != nil {
 			return err
 		}
@@ -313,6 +317,20 @@ func (r *Reconciler) updateTektonPipelineStatus(ctx context.Context, tp *v1alpha
 
 func (r *Reconciler) createInstallerSet(ctx context.Context, tp *v1alpha1.TektonPipeline) (*v1alpha1.TektonInstallerSet, error) {
 
+	generatedIs, err := r.generateInstallerSet(ctx, tp)
+	if err != nil {
+		return nil, err
+	}
+
+	createdIs, err := tisBuilder.Create(ctx, generatedIs)
+	if err != nil {
+		return nil, err
+	}
+
+	return createdIs, nil
+}
+
+func (r *Reconciler) generateInstallerSet(ctx context.Context, tp *v1alpha1.TektonPipeline) (*v1alpha1.TektonInstallerSet, error) {
 	// Creates a new default installer
 	dis := installer.NewDefaultInstaller()
 
@@ -337,19 +355,12 @@ func (r *Reconciler) createInstallerSet(ctx context.Context, tp *v1alpha1.Tekton
 	// Adds the annotations to the installer
 	dis.AddAnnotationsKeyVal(v1alpha1.TargetNamespaceKey, tp.Spec.TargetNamespace)
 
-	// Hash of TektonPipeline Spec
-	specHash, err := hash.Compute(tp.Spec)
+	generatedIs, err := tisBuilder.GenerateInstallerSetWithPrefixName(ctx, dis, v1alpha1.PipelineResourceName)
 	if err != nil {
 		return nil, err
 	}
-	dis.AddAnnotationsKeyVal(v1alpha1.LastAppliedHashKey, specHash)
 
-	// Creates installer set with generate name
-	createdIs, err := tisBuilder.CreateInstallerSetWithGenerateName(ctx, dis, v1alpha1.PipelineResourceName)
-	if err != nil {
-		return nil, err
-	}
-	return createdIs, nil
+	return generatedIs, nil
 }
 
 func (r *Reconciler) targetNamespaceCheck(ctx context.Context, tp *v1alpha1.TektonPipeline) error {

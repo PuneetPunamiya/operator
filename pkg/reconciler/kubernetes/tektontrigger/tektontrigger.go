@@ -126,18 +126,6 @@ func (r *Reconciler) ReconcileKind(ctx context.Context, tt *v1alpha1.TektonTrigg
 		return nil
 	}
 
-	// Make sure TektonPipeline is installed before proceeding with
-	// TektonTrigger
-	if _, err := common.PipelineReady(r.pipelineInformer); err != nil {
-		if err.Error() == common.PipelineNotReady {
-			tt.Status.MarkDependencyInstalling("tekton-pipelines is still installing")
-			// wait for pipeline status to change
-			return v1alpha1.REQUEUE_EVENT_AFTER
-		}
-		// (tektonpipeline.operator.tekton.dev instance not available yet)
-		tt.Status.MarkDependencyMissing("tekton-pipelines does not exist")
-		return err
-	}
 	tt.Status.MarkDependenciesInstalled()
 
 	// Pass the object through defaulting
@@ -296,6 +284,19 @@ func (r *Reconciler) ReconcileKind(ctx context.Context, tt *v1alpha1.TektonTrigg
 			logger.Error("preempt deadlock error: %v", err)
 		}
 		return v1alpha1.REQUEUE_EVENT_AFTER
+	}
+
+	// Make sure TektonPipeline is installed before proceeding with
+	// TektonTrigger
+	if _, err := common.PipelineReady(r.pipelineInformer); err != nil {
+		if err.Error() == common.PipelineNotReady {
+			tt.Status.MarkDependencyInstalling("tekton-pipelines is still installing")
+			// wait for pipeline status to change
+			return v1alpha1.REQUEUE_EVENT_AFTER
+		}
+		// (tektonpipeline.operator.tekton.dev instance not available yet)
+		tt.Status.MarkInstallerSetNotReady("tekton-pipelines does not exist")
+		return err
 	}
 
 	// Mark InstallerSet Ready

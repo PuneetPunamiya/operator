@@ -24,6 +24,9 @@ import (
 const (
 	// DB
 	DbDependenciesInstalled apis.ConditionType = "DbDependenciesInstalled"
+
+	DbPVCInstallerSetAvailable apis.ConditionType = "DbPVCInstallSetAvailable"
+
 	DbInstallerSetAvailable apis.ConditionType = "DbInstallSetAvailable"
 	// DB-migration
 	DatabasebMigrationDone apis.ConditionType = "DatabasebMigrationDone"
@@ -42,6 +45,7 @@ var (
 
 	hubCondSet = apis.NewLivingConditionSet(
 		DbDependenciesInstalled,
+		DbPVCInstallerSetAvailable,
 		DbInstallerSetAvailable,
 		DatabasebMigrationDone,
 		PreReconciler,
@@ -104,6 +108,19 @@ func (ths *TektonHubStatus) MarkDbDependencyMissing(msg string) {
 
 func (ths *TektonHubStatus) MarkDbDependenciesInstalled() {
 	hubCondSet.Manage(ths).MarkTrue(DbDependenciesInstalled)
+}
+
+// Life cycle for PVC of Db
+func (ths *TektonHubStatus) MarkDbPVCInstallerSetNotAvailable(msg string) {
+	ths.MarkNotReady("TektonInstallerSet not ready for DB PVC")
+	hubCondSet.Manage(ths).MarkFalse(
+		DbPVCInstallerSetAvailable,
+		"Error",
+		"Installer set not ready: %s", msg)
+}
+
+func (ths *TektonHubStatus) MarkDbPVCInstallerSetAvailable() {
+	hubCondSet.Manage(ths).MarkTrue(DbPVCInstallerSetAvailable)
 }
 
 func (ths *TektonHubStatus) MarkDbInstallerSetNotAvailable(msg string) {

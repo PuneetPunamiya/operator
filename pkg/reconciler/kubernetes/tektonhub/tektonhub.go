@@ -62,6 +62,7 @@ var (
 	errKeyMissing error = fmt.Errorf("secret doesn't contains all the keys")
 	namespace     string
 	db            string = fmt.Sprintf("%s-%s", hubprefix, "db")
+	dbPVC         string = fmt.Sprintf("%s-%s", hubprefix, "db-pvc")
 	dbMigration   string = fmt.Sprintf("%s-%s", hubprefix, "db-migration")
 	api           string = fmt.Sprintf("%s-%s", hubprefix, "api")
 	ui            string = fmt.Sprintf("%s-%s", hubprefix, "ui")
@@ -134,14 +135,13 @@ func (r *Reconciler) ReconcileKind(ctx context.Context, th *v1alpha1.TektonHub) 
 	}
 
 	th.SetDefaults(ctx)
+	th.Status.SetVersion(common.TargetVersion(th))
+
 	namespace = th.Spec.GetTargetNamespace()
 
 	if err := r.targetNamespaceCheck(ctx, th); err != nil {
 		return nil
 	}
-
-	version := common.TargetVersion(th)
-	hubDir := filepath.Join(common.ComponentDir(th), version)
 
 	// Create the API route based on platform
 	if err := r.extension.PreReconcile(ctx, th); err != nil {
@@ -149,39 +149,45 @@ func (r *Reconciler) ReconcileKind(ctx context.Context, th *v1alpha1.TektonHub) 
 	}
 	th.Status.MarkPreReconcilerComplete()
 
-	// TODO: remove this after operator openshift-build version 1.8
-	if err := r.checkDbApiPVCOwnerRef(ctx, th); err != nil {
+	err := r.managePVC(ctx, th, dbPVC)
+	if err != nil {
 		return err
 	}
+	th.Status.MarkDbPVCInstallerSetAvailable()
 
-	// TODO: remove this after operator openshift-build version 1.8
-	if err := r.getAndUpdateHubInstallerSetLabels(ctx); err != nil {
-		return err
-	}
+	//// TODO: remove this after operator openshift-build version 1.8
+	//if err := r.checkDbApiPVCOwnerRef(ctx, th); err != nil {
+	//	return err
+	//}
+	//
+	//// TODO: remove this after operator openshift-build version 1.8
+	//if err := r.getAndUpdateHubInstallerSetLabels(ctx); err != nil {
+	//	return err
+	//}
 
 	// Check if user already has db, else create the default db
-	err := r.checkIfUserHasDb(ctx, th, hubDir, version)
-	if err != nil {
-		return r.handleError(err, th)
-	}
+	//err = r.checkIfUserHasDb(ctx, th, hubDir, version)
+	//if err != nil {
+	//	return r.handleError(err, th)
+	//}
 
 	// Manage DB migration
-	if err := r.manageDbMigrationComponent(ctx, th, hubDir, version); err != nil {
-		return r.handleError(err, th)
-	}
-	th.Status.MarkDatabasebMigrationDone()
+	//if err := r.manageDbMigrationComponent(ctx, th, hubDir, version); err != nil {
+	//	return r.handleError(err, th)
+	//}
+	// th.Status.MarkDatabasebMigrationDone()
 
 	// Manage API
-	if err := r.manageApiComponent(ctx, th, hubDir, version); err != nil {
-		return r.handleError(err, th)
-	}
-	th.Status.MarkApiInstallerSetAvailable()
+	//if err := r.manageApiComponent(ctx, th, hubDir, version); err != nil {
+	//	return r.handleError(err, th)
+	//}
+	// th.Status.MarkApiInstallerSetAvailable()
 
 	// Manage UI
-	if err := r.manageUiComponent(ctx, th, hubDir, version); err != nil {
-		return r.handleError(err, th)
-	}
-	th.Status.MarkUiInstallerSetAvailable()
+	//if err := r.manageUiComponent(ctx, th, hubDir, version); err != nil {
+	//	return r.handleError(err, th)
+	//}
+	// th.Status.MarkUiInstallerSetAvailable()
 
 	if err := r.extension.PostReconcile(ctx, th); err != nil {
 		return err

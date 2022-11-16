@@ -20,27 +20,24 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/tektoncd/operator/pkg/reconciler/kubernetes/tektoninstallerset/client"
+
 	mf "github.com/manifestival/manifestival"
 	"github.com/tektoncd/operator/pkg/apis/operator/v1alpha1"
 	clientset "github.com/tektoncd/operator/pkg/client/clientset/versioned"
 	pipelineinformer "github.com/tektoncd/operator/pkg/client/informers/externalversions/operator/v1alpha1"
 	tektondashboardreconciler "github.com/tektoncd/operator/pkg/client/injection/reconciler/operator/v1alpha1/tektondashboard"
 	"github.com/tektoncd/operator/pkg/reconciler/common"
-	"github.com/tektoncd/operator/pkg/reconciler/kubernetes/tektoninstallerset"
 	"github.com/tektoncd/operator/pkg/reconciler/shared/hash"
-	corev1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes"
-	"knative.dev/pkg/apis"
 	"knative.dev/pkg/logging"
 	pkgreconciler "knative.dev/pkg/reconciler"
 )
 
 // Reconciler implements controller.Reconciler for TektonDashboard resources.
 type Reconciler struct {
-	// kubeClientSet allows us to talk to the k8s for core APIs
-	kubeClientSet kubernetes.Interface
+	// installer Set client to do CRUD operations for components
+	installerSetClient *client.InstallerSetClient
 	// operatorClientSet allows us to configure operator objects
 	operatorClientSet clientset.Interface
 	// readOnlyManifest has the source manifest of Tekton Dashboard for
@@ -70,44 +67,6 @@ var (
 )
 
 const createdByValue = "TektonDashboard"
-
-// FinalizeKind removes all resources after deletion of a TektonDashboards.
-func (r *Reconciler) FinalizeKind(ctx context.Context, original *v1alpha1.TektonDashboard) pkgreconciler.Event {
-	logger := logging.FromContext(ctx)
-
-	// Delete CRDs before deleting rest of resources so that any instance
-	// of CRDs which has finalizer set will get deleted before we remove
-	// the controller;s deployment for it
-
-	var manifest mf.Manifest
-	if original.Spec.Readonly {
-		manifest = r.readonlyManifest
-	} else {
-		manifest = r.fullaccessManifest
-	}
-
-	if err := manifest.Filter(mf.CRDs).Delete(); err != nil {
-		logger.Error("Failed to deleted CRDs for TektonDashboard")
-		return err
-	}
-
-	labelSelector, err := common.LabelSelector(ls)
-	if err != nil {
-		return err
-	}
-	if err := r.operatorClientSet.OperatorV1alpha1().TektonInstallerSets().
-		DeleteCollection(ctx, metav1.DeleteOptions{}, metav1.ListOptions{
-			LabelSelector: labelSelector,
-		}); err != nil {
-		logger.Error("Failed to delete installer set created by TektonDashboard", err)
-		return err
-	}
-
-	if err := r.extension.Finalize(ctx, original); err != nil {
-		logger.Error("Failed to finalize platform resources", err)
-	}
-	return nil
-}
 
 // ReconcileKind compares the actual state with the desired, and attempts to
 // converge the two.
@@ -143,11 +102,6 @@ func (r *Reconciler) ReconcileKind(ctx context.Context, td *v1alpha1.TektonDashb
 	}
 	td.Status.MarkDependenciesInstalled()
 
-	// Mark TektonDashboard Instance as Not Ready if an upgrade is needed
-	if err := r.markUpgrade(ctx, td); err != nil {
-		return err
-	}
-
 	if err := r.extension.PreReconcile(ctx, td); err != nil {
 		td.Status.MarkPreReconcilerFailed(fmt.Sprintf("PreReconciliation failed: %s", err.Error()))
 		return err
@@ -156,140 +110,30 @@ func (r *Reconciler) ReconcileKind(ctx context.Context, td *v1alpha1.TektonDashb
 	// Mark PreReconcile Complete
 	td.Status.MarkPreReconcilerComplete()
 
-	// Check if an tektoninstallerset already exists, if not then create
-	labelSelector, err := common.LabelSelector(ls)
-	if err != nil {
-		return err
-	}
-	existingInstallerSet, err := tektoninstallerset.CurrentInstallerSetName(ctx, r.operatorClientSet, labelSelector)
-	if err != nil {
-		return err
-	}
-	if existingInstallerSet == "" {
-		createdIs, err := r.createInstallerSet(ctx, td)
-		if err != nil {
-			return err
-		}
-
-		return r.updateTektonDashboardStatus(ctx, td, createdIs)
-	}
-
-	// If exists, then fetch the TektonInstallerSet
-	installedTIS, err := r.operatorClientSet.OperatorV1alpha1().TektonInstallerSets().
-		Get(ctx, existingInstallerSet, metav1.GetOptions{})
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			createdIs, err := r.createInstallerSet(ctx, td)
-			if err != nil {
-				return err
-			}
-			return r.updateTektonDashboardStatus(ctx, td, createdIs)
-		}
-		logger.Error("failed to get InstallerSet: %s", err)
-		return err
-	}
-
-	installerSetTargetNamespace := installedTIS.Annotations[v1alpha1.TargetNamespaceKey]
-	installerSetReleaseVersion := installedTIS.Labels[v1alpha1.ReleaseVersionKey]
-
-	// Check if TargetNamespace of existing TektonInstallerSet is same as expected
-	// Check if Release Version in TektonInstallerSet is same as expected
-	// If any of the thing above is not same then delete the existing TektonInstallerSet
-	// and create a new with expected properties
-
-	if installerSetTargetNamespace != td.Spec.TargetNamespace || installerSetReleaseVersion != r.operatorVersion {
-		// Delete the existing TektonInstallerSet
-		err := r.operatorClientSet.OperatorV1alpha1().TektonInstallerSets().
-			Delete(ctx, existingInstallerSet, metav1.DeleteOptions{})
-		if err != nil {
-			logger.Error("failed to delete InstallerSet: %s", err)
-			return err
-		}
-
-		// Make sure the TektonInstallerSet is deleted
-		_, err = r.operatorClientSet.OperatorV1alpha1().TektonInstallerSets().
-			Get(ctx, existingInstallerSet, metav1.GetOptions{})
-		if err == nil {
-			td.Status.MarkNotReady("Waiting for previous installer set to get deleted")
-			return v1alpha1.REQUEUE_EVENT_AFTER
-		}
-		if !apierrors.IsNotFound(err) {
-			logger.Error("failed to get InstallerSet: %s", err)
-			return err
-		}
-		return nil
-
+	var manifest mf.Manifest
+	if td.Spec.Readonly {
+		manifest = r.readonlyManifest
 	} else {
-		// If target namespace and version are not changed then check if spec
-		// of TektonDashboard is changed by checking hash stored as annotation on
-		// TektonInstallerSet with computing new hash of TektonDashboard Spec
-
-		// Hash of TektonDashboard Spec
-
-		expectedSpecHash, err := hash.Compute(td.Spec)
-		if err != nil {
+		manifest = r.fullaccessManifest
+	}
+	if err := r.installerSetClient.MainSet(ctx, td, &manifest, filterAndTransform(r.extension)); err != nil {
+		msg := fmt.Sprintf("Main Reconcilation failed: %s", err.Error())
+		logger.Error(msg)
+		if err == v1alpha1.REQUEUE_EVENT_AFTER {
 			return err
 		}
-
-		// spec hash stored on installerSet
-		lastAppliedHash := installedTIS.GetAnnotations()[v1alpha1.LastAppliedHashKey]
-
-		if lastAppliedHash != expectedSpecHash {
-
-			var manifest mf.Manifest
-			if td.Spec.Readonly {
-				manifest = r.readonlyManifest
-			} else {
-				manifest = r.fullaccessManifest
-			}
-
-			if err := r.transform(ctx, &manifest, td); err != nil {
-				logger.Error("manifest transformation failed:  ", err)
-				return err
-			}
-
-			// Update the spec hash
-			current := installedTIS.GetAnnotations()
-			current[v1alpha1.LastAppliedHashKey] = expectedSpecHash
-			installedTIS.SetAnnotations(current)
-
-			// Update the manifests
-			installedTIS.Spec.Manifests = manifest.Resources()
-
-			if _, err = r.operatorClientSet.OperatorV1alpha1().TektonInstallerSets().
-				Update(ctx, installedTIS, metav1.UpdateOptions{}); err != nil {
-				return err
-			}
-
-			// after updating installer set enqueue after a duration
-			// to allow changes to get deployed
-			return v1alpha1.REQUEUE_EVENT_AFTER
-		}
+		td.Status.MarkInstallerSetNotReady(msg)
+		return nil
 	}
-
-	// Mark InstallerSetAvailable
-	td.Status.MarkInstallerSetAvailable()
-
-	ready := installedTIS.Status.GetCondition(apis.ConditionReady)
-	if ready == nil {
-		td.Status.MarkInstallerSetNotReady("Waiting for installation")
-		return v1alpha1.REQUEUE_EVENT_AFTER
-	}
-
-	if ready.Status == corev1.ConditionUnknown {
-		td.Status.MarkInstallerSetNotReady("Waiting for installation")
-		return v1alpha1.REQUEUE_EVENT_AFTER
-	} else if ready.Status == corev1.ConditionFalse {
-		td.Status.MarkInstallerSetNotReady(ready.Message)
-		return v1alpha1.REQUEUE_EVENT_AFTER
-	}
-
-	// Mark InstallerSet Ready
-	td.Status.MarkInstallerSetReady()
 
 	if err := r.extension.PostReconcile(ctx, td); err != nil {
-		td.Status.MarkPostReconcilerFailed(fmt.Sprintf("PostReconciliation failed: %s", err.Error()))
-		return err
+		msg := fmt.Sprintf("PostReconciliation failed: %s", err.Error())
+		logger.Error(msg)
+		if err == v1alpha1.REQUEUE_EVENT_AFTER {
+			return err
+		}
+		td.Status.MarkPostReconcilerFailed(msg)
+		return nil
 	}
 
 	td.Status.MarkPostReconcilerComplete()
